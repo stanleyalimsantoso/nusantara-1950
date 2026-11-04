@@ -190,6 +190,7 @@ a.viewbtn { text-decoration: none; }
 .banner .b-title { font-family: 'IM Fell English SC', Georgia, serif; font-size: clamp(30px, 5vw, 58px); letter-spacing: .04em; line-height: 1.05; }
 .banner .b-sub { font-family: 'IM Fell English', Georgia, serif; font-style: italic; font-size: clamp(15px, 1.8vw, 20px); color: #3b2c1c; margin-top: 6px; }
 .banner.f-sep { color: #3f5e2c; } .banner.f-gov { color: #8c3b2c; } .banner.f-imp { color: #8a5216; }
+.sendrow { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; } .sendrow .btn { padding: 2px 10px; min-width: 32px; } .sendrow b { min-width: 54px; text-align: center; }
 .spark { position: absolute; width: 7px; height: 7px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px #2b2117; }
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
 .battle { position: absolute; width: 270px; background: rgba(36,27,18,.94); border: 1px solid #c9a24a; border-radius: 8px; padding: 10px 12px; color: #f0e2c0; font-size: 13px; display: grid; gap: 6px; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
@@ -330,7 +331,7 @@ const Engine = (() => {
   const CARDS = {
     search:     { name: 'Search', f: 'gov', cost: 2, target: 'prov', text: 'Learn if the rebel hideout is in one province.' },
     sweep:      { name: 'Sweep', f: 'gov', cost: 3, target: 'prov', text: 'Search a province and all its land neighbours.' },
-    crackdown:  { name: 'Crackdown', f: 'gov', cost: 2, target: 'prov', text: 'Unrest −2 in a province, if there is any. Diplomacy −1.' },
+    crackdown:  { name: 'Crackdown', f: 'gov', cost: 2, target: 'prov', text: 'Unrest −2 in a province without an outpost, if there is any. Diplomacy −1.' },
     fort:       { name: 'Build fort', f: 'gov', cost: 2, target: 'prov', text: 'Unrest cannot rise in this province.' },
     destroy:    { name: 'Destroy outpost', f: 'gov', cost: 3, target: 'prov', text: 'Remove an outpost. The province drops to Restless.' },
     mission:    { name: 'Diplomatic mission', f: 'gov', cost: 2, target: null, text: 'Diplomacy +1.' },
@@ -436,7 +437,7 @@ const Engine = (() => {
     const portOk = id => hasPort(id) && !S.ports[id].broken;
     switch (card) {
       case 'search': case 'sweep': return R.filter(id => id !== 'jakarta');
-      case 'crackdown': return R.slice();   // blind: the government can't see unrest
+      case 'crackdown': return R.filter(id => !P[id].outpost);   // blind: the government can't see unrest (outposts are public: use Destroy outpost there)
       case 'fort': return R.filter(id => !P[id].fort && !P[id].outpost);
       case 'destroy': return R.filter(id => P[id].outpost);
       case 'repair': return R.filter(id => hasPort(id) && S.ports[id].broken);
@@ -572,7 +573,7 @@ const Engine = (() => {
   /* ================= PHASE 2: CIVIL WAR =================
      Every province has an owner, troops and 3 control points. Attacks are push-and-pull:
      an attacker win takes a control point (at 0 the province falls), a defender win kills an attacking troop. */
-  const WAR = { ROUNDS: 30, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
+  const WAR = { KEEP: 0, ROUNDS: 30, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
   Object.assign(CARDS, {
     w_reinforce: { name: 'Reinforcements', f: 'gov', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
     w_air:       { name: 'Air strike', f: 'gov', cost: 1, target: null, war: true, text: 'Your next attack this turn gets +2.' },
@@ -752,7 +753,7 @@ const Engine = (() => {
     const beach = w.beach[src] && w.beach[src].f === f;
     const canHit = id => w.owner[id] !== f && (w.owner[id] !== 'imp' || w.dutchIn || f === 'imp') && !(f === 'imp' && !w.dutchIn);
     if (beach) { if (w.owner[src] !== f && canHit(src)) out.attack.push(src); return out; }
-    if (w.owner[src] !== f || w.troops[src] < 2) return out;
+    if (w.owner[src] !== f || w.troops[src] < 1 + WAR.KEEP) return out;
     if (f === 'imp' && !w.dutchIn) return out;
     byId[src].neighbors.forEach(n => { if (w.owner[n] === f) out.move.push(n); else if (canHit(n)) out.attack.push(n); });
     if (portWorks(S, src)) (f === 'imp' ? MAP.provinces.map(p => p.id).filter(id => id !== src && (byId[id].seas || []).length) : seaReach(S, src)).forEach(n => {
@@ -781,14 +782,15 @@ const Engine = (() => {
     return {};
   }
 
-  function move(S, src, dst) {
+  function move(S, src, dst, want) {
     const f = S.active, w = S.war, a = warActions(S, src);
     const bySea = a.sea.includes(dst);
     if (!a.move.includes(dst) && !bySea) return { error: 'Troops can’t move there.' };
     const hop = bySea && portWorks(S, src) && portWorks(S, dst);   // port to port: the whole army, cheaply
     const cost = !bySea ? 1 : w.buff[f].transport ? 0 : hop ? WAR.PORT_HOP : seaCost(S, f);
     if (S.points[f] < cost) return { error: `That costs ${cost} point${cost === 1 ? '' : 's'}.` };
-    const n = !bySea || hop ? w.troops[src] - 1 : Math.min(w.buff[f].transport ? WAR.BIG_LIFT : WAR.SEA_LIFT, w.troops[src] - 1);
+    const max = !bySea || hop ? w.troops[src] - WAR.KEEP : Math.min(w.buff[f].transport ? WAR.BIG_LIFT : WAR.SEA_LIFT, w.troops[src] - WAR.KEEP);
+    const n = want ? Math.max(1, Math.min(max, want)) : max;
     S.points[f] -= cost; if (bySea) w.buff[f].transport = false;
     w.troops[src] -= n; w.troops[dst] += n;
     log(S, f, `${n} troop${n === 1 ? '' : 's'} ${bySea ? 'sail' : 'march'} from ${nameOf(src)} to ${nameOf(dst)}.`);
@@ -796,13 +798,13 @@ const Engine = (() => {
     return {};
   }
 
-  function land(S, src, dst) {
+  function land(S, src, dst, want) {
     const f = S.active, w = S.war, a = warActions(S, src);
     if (!a.land.includes(dst)) return { error: 'You can’t land there.' };
     const cost = seaCost(S, f);
     if (S.points[f] < cost) return { error: `A landing costs ${cost} points.` };
     const free = !!w.buff[f].transport;
-    const n = Math.min(free ? WAR.BIG_LIFT : WAR.SEA_LIFT, w.troops[src] - 1);
+    const max = Math.min(free ? WAR.BIG_LIFT : WAR.SEA_LIFT, w.troops[src] - WAR.KEEP), n = want ? Math.max(1, Math.min(max, want)) : max;
     S.points[f] -= cost; w.buff[f].transport = false;
     w.troops[src] -= n;
     const b = w.beach[dst] || { f, n: 0, fresh: false };
@@ -818,7 +820,7 @@ const Engine = (() => {
     if (!a.attack.includes(dst)) return { error: 'You can’t attack there.' };
     if (S.points[f] < 1) return { error: 'Each attack roll costs 1 point.' };
     const fromBeach = !!(w.beach[src] && w.beach[src].f === f && src === dst);
-    const atkTroops = fromBeach ? w.beach[src].n : w.troops[src] - 1;
+    const atkTroops = fromBeach ? w.beach[src].n : w.troops[src] - WAR.KEEP;
     const ad = Math.min(w.buff[f].massed ? WAR.MASSED : WAR.MAX_DICE, atkTroops), dd = Math.max(1, Math.min(WAR.MAX_DEF, w.troops[dst]));
     w.buff[f].massed = false;
     let ab = 0, db = 0;
@@ -855,10 +857,11 @@ const Engine = (() => {
     const w = S.war, prev = w.owner[dst];
     let n;
     if (fromBeach) { n = w.beach[dst].n; delete w.beach[dst]; }
-    else { n = w.troops[src] - 1; w.troops[src] = 1; }
+    else { n = w.troops[src] - WAR.KEEP; w.troops[src] = WAR.KEEP; }
     w.owner[dst] = f; w.troops[dst] = Math.max(1, n); w.control[dst] = 1; delete w.press[dst]; delete w.entrench[dst];
     if (w.beach[dst] && w.beach[dst].f === f) delete w.beach[dst];
     if (prev === 'sep' && S.prov[dst].outpost) { S.prov[dst].outpost = false; log(S, f, `The rebel outpost in ${nameOf(dst)} is destroyed.`); }
+    if (S.prov[dst].fort) { S.prov[dst].fort = false; log(S, f, `The fort in ${nameOf(dst)} is wrecked in the fighting.`); }
     log(S, f, `${nameOf(dst)} falls to the ${FNAME[f].toLowerCase()}!`);
   }
 
@@ -870,6 +873,10 @@ const Engine = (() => {
     if (c.cost > S.points[f]) return { error: `${c.name} costs ${c.cost}. You have ${S.points[f]} left.` };
     const valid = warTargets(S, card);
     if (valid && !valid.includes(target)) return { error: `${c.name} can't target that province.` };
+    if (card === 'w_reinforce' || card === 'w_recruit' || card === 'w_legion') {
+      const who = card === 'w_legion' ? (w.dutchIn ? 'imp' : 'sep') : f;
+      if (card !== 'w_legion' || w.dutchIn || rebelOutposts(S).length) if (army(S, who) >= supply(S, who)) return { error: `${who === f ? 'You are' : `The ${FNAME[who].toLowerCase()} are`} at the supply limit (${army(S, who)} of ${supply(S, who)} troops). Take more provinces to raise it.` };
+    }
     S.points[f] -= c.cost; S.hands[f].splice(idx, 1); if (card !== 'supplies') S.discards[f].push(card);
     const nm = target && nameOf(target);
     switch (card) {
@@ -969,6 +976,14 @@ const Engine = (() => {
     }
     // 2. useful cards
     const hand = S.hands[f];
+    if (f === 'imp' && w.dutchIn) {
+      const atk = bestAttack(S, rng); if (atk) return atk;
+      if (S.points[f] >= 2) {
+        const opts = [];
+        held(S, f).forEach(src => { if (w.troops[src] < 4) return; warActions(S, src).land.forEach(dst => opts.push({ src, dst, v: (dst === 'jakarta' ? 3 : w.owner[dst] === 'gov' ? 1.2 : 1) - w.troops[dst] * .25 + rng() * .3 })); });
+        if (opts.length && !Object.keys(w.beach).some(id => w.beach[id].f === f)) { const o = opts.sort((a, b) => b.v - a.v)[0]; return { kind: 'land', src: o.src, dst: o.dst }; }
+      }
+    }
     for (let i = 0; i < hand.length; i++) {
       const card = hand[i], c = CARDS[card]; if (!c.war && card !== 'smear' && card !== 'arms' && card !== 'supplies') continue;
       if (c.cost > S.points[f]) continue;
@@ -990,14 +1005,14 @@ const Engine = (() => {
       if (f === 'imp') {
         if (w.dutchIn && S.points[f] <= 3 && card !== 'w_legion') continue;
         if (card === 'smear' && !w.dutchIn) return { kind: 'card', idx: i, target: null };
-        if (card === 'arms' && rng() < .6) return { kind: 'card', idx: i, target: null };
-        if (card === 'w_legion') return { kind: 'card', idx: i, target: null };
+        if (card === 'arms' && rng() < (w.dutchIn ? .2 : .6)) return { kind: 'card', idx: i, target: null };
+        if (card === 'w_legion' && army(S, w.dutchIn ? 'imp' : 'sep') < supply(S, w.dutchIn ? 'imp' : 'sep')) return { kind: 'card', idx: i, target: null };
         if (card === 'w_blockade' && t.length) { const g = t.filter(id => w.owner[id] === 'gov'); if (g.length) return { kind: 'card', idx: i, target: g[Math.floor(rng() * g.length)] }; }
       }
     }
     // 3. the government pulls troops back into a threatened capital
     if (f === 'gov' && w.owner.jakarta === 'gov' && S.points[f] >= 1 && w.troops.jakarta < jakartaThreat(S) + 2) {
-      const n = byId.jakarta.neighbors.filter(id => w.owner[id] === 'gov' && w.troops[id] >= 2).sort((a, b) => w.troops[b] - w.troops[a])[0];
+      const n = byId.jakarta.neighbors.filter(id => w.owner[id] === 'gov' && w.troops[id] >= 1 + WAR.KEEP).sort((a, b) => w.troops[b] - w.troops[a])[0];
       if (n) return { kind: 'move', src: n, dst: 'jakarta' };
     }
     const atk = bestAttack(S, rng);
@@ -1011,7 +1026,9 @@ const Engine = (() => {
         while (q.length) { const id = q.shift(); byId[id].neighbors.forEach(n => { if (distTo[n] === undefined) { distTo[n] = distTo[id] + 1; q.push(n); } }); }
         let bestMove = null;
         held(S, f).forEach(src => {
-          if (w.troops[src] < 3 || distTo[src] === undefined || distTo[src] <= 1 || (src === 'jakarta' && f === 'gov')) return;
+          // safe rear provinces send even their last troops forward; frontline ones keep some back
+          const rear = !byId[src].neighbors.some(n => w.owner[n] !== f && (w.owner[n] !== 'imp' || w.dutchIn || f === 'imp')) && !(w.beach[src] && w.beach[src].f !== f);
+          if (w.troops[src] < (rear ? 1 + WAR.KEEP : 3) || distTo[src] === undefined || distTo[src] <= 1 || (src === 'jakarta' && f === 'gov')) return;
           byId[src].neighbors.forEach(n => { if (w.owner[n] === f && distTo[n] !== undefined && distTo[n] < distTo[src]) { const v = w.troops[src] - distTo[n]; if (!bestMove || v > bestMove.v) bestMove = { kind: 'move', src, dst: n, v }; } });
         });
         if (bestMove) return bestMove;
@@ -1042,12 +1059,12 @@ const Engine = (() => {
     const srcs = [...held(S, f), ...Object.keys(w.beach).filter(id => w.beach[id].f === f)];
     srcs.forEach(src => warActions(S, src).attack.forEach(dst => {
       const fromBeach = w.beach[src] && w.beach[src].f === f && src === dst;
-      const ad = Math.min(w.buff[f].massed ? WAR.MASSED : WAR.MAX_DICE, fromBeach ? w.beach[src].n : w.troops[src] - 1), dd = Math.max(1, Math.min(WAR.MAX_DEF, w.troops[dst]));
+      const ad = Math.min(w.buff[f].massed ? WAR.MASSED : WAR.MAX_DICE, fromBeach ? w.beach[src].n : w.troops[src] - WAR.KEEP), dd = Math.max(1, Math.min(WAR.MAX_DEF, w.troops[dst]));
       const ab = (w.buff[f].air ? WAR.AIR : 0) + (fromBeach && w.beach[src].fresh ? WAR.BEACH : 0);
       const db = Math.min(WAR.DEF_CAP, (S.prov[dst].fort ? WAR.FORT : 0) + (w.entrench[dst] && w.entrench[dst] === w.owner[dst] ? WAR.ENTRENCH : 0));
-      const p = odds(ad, dd, ab, db), v = p * goal(dst) * (1 + (3 - w.control[dst]) * .8) * (1 + .15 * Math.min(6, ad - dd + (fromBeach ? 0 : w.troops[src] - 1 - w.troops[dst])));
+      const p = odds(ad, dd, ab, db), v = p * goal(dst) * (1 + (3 - w.control[dst]) * .8) * (1 + .15 * Math.min(6, ad - dd + (fromBeach ? 0 : w.troops[src] - WAR.KEEP - w.troops[dst])));
       // with equal dice, only attack when you are at least as strong as the defenders
-      const strong = (fromBeach ? w.beach[src].n : w.troops[src] - 1) >= w.troops[dst] || w.troops[dst] === 0;
+      const strong = (fromBeach ? w.beach[src].n : w.troops[src] - WAR.KEEP) >= w.troops[dst] || w.troops[dst] === 0;
       if (p >= .4 && strong && (!best || v > best.v)) best = { kind: 'attack', src, dst, v };
     }));
     return best;
@@ -1301,38 +1318,56 @@ function encircled() {
 }
 function drawFront(id, enc) {
   const g = frontEl[id], w = S.war, o = w.owner[id]; g.textContent = '';
-  const [cx, cy] = cityXY(id);
-  if (enc[id]) {
-    el('path', { d: PROV[id].d, fill: 'none', stroke: FILL[enc[id]], 'stroke-width': 16, opacity: .9 }, g);
-    el('path', { d: PROV[id].d, fill: 'none', stroke: `url(#st-${enc[id]})`, 'stroke-width': 28, opacity: .55 }, g);
-    const r = 7 + Math.min(12, 2 * w.troops[id]);
-    el('circle', { cx, cy, r, fill: 'none', stroke: '#2b2117', 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }, g);
+  const [cx, cy] = cityXY(id), c = w.control[id], pr = w.press[id];
+  const pressed = pr && pr !== o && c < E.WAR.CONTROL;
+  // cut off from friendly land AND under attack: the pocket is being squeezed
+  if (enc[id] && pressed) {
+    el('path', { d: PROV[id].d, fill: 'none', stroke: FILL[pr], 'stroke-width': 16, opacity: .9 }, g);
+    el('path', { d: PROV[id].d, fill: 'none', stroke: `url(#st-${pr})`, 'stroke-width': 28, opacity: .55 }, g);
+    el('circle', { cx, cy, r: 7 + Math.min(12, 2 * w.troops[id]), fill: 'none', stroke: '#2b2117', 'stroke-width': 1.3, 'stroke-dasharray': '3 2' }, g);
     return;
   }
-  const c = w.control[id], pr = w.press[id];
-  if (!pr || pr === o || c >= E.WAR.CONTROL) return;
-  // which way the attack comes from: the attacker's neighbouring land, or the sea
-  const from = PROV[id].neighbors.filter(n => w.owner[n] === pr).map(n => PROV[n].label);
-  if (!from.length) { const sz = D.seas.find(s => (PROV[id].seas || []).includes(s.id)); from.push(sz ? sz.label : [PROV[id].label[0], PROV[id].label[1] + 40]); }
-  const [lx, ly] = PROV[id].label, ax = from.reduce((a, p) => a + p[0], 0) / from.length, ay = from.reduce((a, p) => a + p[1], 0) / from.length;
-  let vx = ax - lx, vy = ay - ly; const L = Math.hypot(vx, vy) || 1; vx /= L; vy /= L;
-  const b = bboxOf(id), corners = [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]];
-  const pr2 = corners.map(([x, y]) => x * vx + y * vy), mx = Math.max(...pr2), mn = Math.min(...pr2), span = mx - mn;
-  const frac = (E.WAR.CONTROL - c) / E.WAR.CONTROL * .8;
-  const s0 = mx - frac * span, big = Math.hypot(b.width, b.height) + 10, rnd = seed(id + c);
-  const px = -vy, py = vx, mid = [(b.x + b.width / 2), (b.y + b.height / 2)], m0 = mid[0] * px + mid[1] * py;
-  const pts = [];
-  for (let i = 0; i <= 14; i++) {
-    const t = m0 - big + (2 * big * i) / 14, j = (rnd() - .5) * span * .09;
-    pts.push([vx * (s0 + j) + px * t, vy * (s0 + j) + py * t]);
+  if (!pressed) return;
+  const frac = (E.WAR.CONTROL - c) / E.WAR.CONTROL;   // 1 control lost = a third, 2 lost = two thirds
+  const b = bboxOf(id), landFrom = PROV[id].neighbors.filter(n => w.owner[n] === pr);
+  const beach = w.beach[id] && w.beach[id].f === pr;
+  if (!landFrom.length && !beach) {
+    // no enemy army next door: this is unrest (or agitation), so it shows as scattered trouble, not a front
+    el('path', { d: PROV[id].d, fill: `url(#unrest-${pr})`, opacity: (.2 + .4 * frac).toFixed(2) }, g);
+    return;
   }
-  const far = pts.slice().reverse().map(([x, y]) => [x + vx * big * 2, y + vy * big * 2]);
-  const P = q => q.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' ');
-  el('polygon', { points: P(pts.concat(far)), fill: FILL[pr], opacity: .92 }, g);
-  el('polyline', { points: P(pts), fill: 'none', stroke: '#2b2117', 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, g);
-  // a city about to fall is besieged
+  if (beach || !landFrom.length) {
+    // a landing: a bridgehead grows from the coast nearest the attacker
+    const pts = (PROV[id].d.match(/-?\d+(\.\d+)?,-?\d+(\.\d+)?/g) || []).map(t => t.split(',').map(Number));
+    const theirs = E.held(S, pr).map(n => PROV[n].label);
+    const near = theirs.length ? theirs.reduce((a, p) => Math.hypot(p[0] - cx, p[1] - cy) < Math.hypot(a[0] - cx, a[1] - cy) ? p : a) : [cx, cy + 60];
+    const port = PORT[id] && PORT[id].xy;
+    const at = port || pts.reduce((a, p) => Math.hypot(p[0] - near[0], p[1] - near[1]) < Math.hypot(a[0] - near[0], a[1] - near[1]) ? p : a, pts[0] || [cx, cy]);
+    const R = Math.sqrt(b.width * b.height) * (.12 + .5 * frac);
+    el('circle', { cx: at[0], cy: at[1], r: R.toFixed(1), fill: FILL[pr], opacity: .92 }, g);
+    el('circle', { cx: at[0], cy: at[1], r: R.toFixed(1), fill: 'none', stroke: '#2b2117', 'stroke-width': 1.6, 'stroke-dasharray': '5 3' }, g);
+  } else {
+    // a land offensive: the front line advances from the attacker's side
+    const from = landFrom.map(n => PROV[n].label);
+    const [lx, ly] = PROV[id].label, ax = from.reduce((a, p) => a + p[0], 0) / from.length, ay = from.reduce((a, p) => a + p[1], 0) / from.length;
+    let vx = ax - lx, vy = ay - ly; const L = Math.hypot(vx, vy) || 1; vx /= L; vy /= L;
+    const corners = [[b.x, b.y], [b.x + b.width, b.y], [b.x, b.y + b.height], [b.x + b.width, b.y + b.height]];
+    const pj = corners.map(([x, y]) => x * vx + y * vy), mx = Math.max(...pj), mn = Math.min(...pj), span = mx - mn;
+    const s0 = mx - frac * span, big = Math.hypot(b.width, b.height) + 10, rnd = seed(id + pr);
+    const px = -vy, py = vx, m0 = (b.x + b.width / 2) * px + (b.y + b.height / 2) * py;
+    const line = [];
+    for (let i = 0; i <= 14; i++) { const t = m0 - big + (2 * big * i) / 14, j = (rnd() - .5) * span * .08; line.push([vx * (s0 + j) + px * t, vy * (s0 + j) + py * t]); }
+    const far = line.slice().reverse().map(([x, y]) => [x + vx * big * 2, y + vy * big * 2]);
+    const P = q => q.map(([x, y]) => x.toFixed(1) + ',' + y.toFixed(1)).join(' ');
+    el('polygon', { points: P(line.concat(far)), fill: FILL[pr], opacity: .92 }, g);
+    el('polyline', { points: P(line), fill: 'none', stroke: '#2b2117', 'stroke-width': 1.6, 'stroke-linejoin': 'round' }, g);
+  }
   if (c === 1) el('circle', { cx, cy, r: 7, fill: 'none', stroke: INK[pr], 'stroke-width': 1.6, 'stroke-dasharray': '2.5 2' }, g);
 }
+['gov', 'sep', 'imp'].forEach(f => {
+  const pt = el('pattern', { id: 'unrest-' + f, width: 14, height: 14, patternUnits: 'userSpaceOnUse' }, defsEl);
+  [[3, 3, 1.5], [10, 6, 1.1], [6, 11, 1.3]].forEach(([x, y, r]) => el('circle', { cx: x, cy: y, r, fill: { gov: '#8c3b2c', sep: '#3f5e2c', imp: '#8a5216' }[f] }, pt));
+});
 /* the legend, in the open ocean at the bottom left of the sheet */
 const gLeg = el('g', { id: 'g-leg', transform: `translate(10,${D.H - 176})` }); $('g-mk').parentNode.insertBefore(gLeg, $('g-mk'));
 let legKey = '';
@@ -1351,7 +1386,8 @@ function renderLegend() {
     rows.push([sw('#d6907f'), 'Republic'], [sw('#6f9447'), 'Rebels'], [sw('#e9a45c'), S.war.dutchIn ? 'Dutch, at war' : 'Dutch, not yet at war'],
       [`<circle r="6" fill="#8c3b2c" stroke="#f4ead0" stroke-width="1.4"/><text y="3" text-anchor="middle" font-size="8" fill="#f6eedb" font-family="Spectral, Georgia, serif">4</text>`, 'Troops in a province'],
       [`<rect x="-7" y="-5" width="7" height="10" fill="#d6907f"/><rect x="0" y="-5" width="7" height="10" fill="#6f9447"/><path d="M0 -5l1 3 -1 2 1 3 -1 2" fill="none" stroke="#2b2117" stroke-width="1.3"/>`, 'Front line: control lost'],
-      [`<rect x="-7" y="-5" width="14" height="10" fill="#d6907f" stroke="#6f9447" stroke-width="3"/><circle r="2.6" fill="none" stroke="#2b2117" stroke-dasharray="1.5 1"/>`, 'Cut off (encircled)'],
+      [`<rect x="-7" y="-5" width="14" height="10" fill="#d6907f"/><circle cx="-3" cy="-2" r="1.6" fill="#3f5e2c"/><circle cx="3" cy="1" r="1.4" fill="#3f5e2c"/><circle cx="-1" cy="3" r="1.4" fill="#3f5e2c"/>`, 'Unrest: recovers if left alone'],
+      [`<rect x="-7" y="-5" width="14" height="10" fill="#d6907f" stroke="#6f9447" stroke-width="3"/><circle r="2.6" fill="none" stroke="#2b2117" stroke-dasharray="1.5 1"/>`, 'Cut off and under attack'],
       [`<path d="M-7 0h14l-3 4h-8z" fill="#8a5216" stroke="#f4ead0"/><rect x="-2.5" y="-4" width="5" height="4" fill="#8a5216"/>`, 'Beachhead'],
       [`<path d="M-5 5V-2.5h2v-2.5h2v2.5h2v-2.5h2v2.5H5v7.5z" fill="#9a8a70" stroke="#3b2c1c" stroke-width=".9"/>`, 'Fort (+2 defence)'],
       [`<path d="M-3 6V-6" stroke="#2b2117" stroke-width="1.4"/><path d="M-3 -6h8l-2.5 3 2.5 3h-8z" fill="#6f9447" stroke="#2b2117" stroke-width=".8"/>`, 'Rebel outpost']);
@@ -1516,7 +1552,7 @@ const mine = f => isBot(f) ? false : mode === 'local' ? true : !!(S && S.seats[f
 function nextHuman(from) { let f = from; for (let i = 0; i < 3; i++) { if (!isBot(f)) return f; f = F[(F.indexOf(f) + 1) % 3]; } return from; }
 const atWar = () => !!(S && S.phase === 'war');
 const myTurn = () => S && (S.phase === 'play' || S.phase === 'war') && viewF === S.active && mine(S.active) && passTo === null;
-let src = null, skipWarn = false, uprisingShow = null;
+let src = null, skipWarn = false, uprisingShow = null, sendN = null;   // sendN: troops to send (null = all that can go)
 const knowsSecret = () => viewF === 'sep' && mine('sep') && secret !== null;
 /* Only the separatists see true loyalty. Everyone else sees what their last search showed (or nothing). */
 const seesLoy = () => viewF === 'sep' && mine('sep') && passTo === null;
@@ -1543,7 +1579,7 @@ function renderHint() {
       const b = w.beach[src] && w.beach[src].f === viewF;
       msg = b ? `Beachhead in ${PROV[src].name} (${w.beach[src].n} troops): click it to attack${w.beach[src].fresh ? ', −2 this turn' : ''}.` : `Army in ${PROV[src].name} (${w.troops[src]} troops): gold to march, red to attack, dashed by sea (2 points).`;
       cancel = true;
-    } else msg = 'Click one of your provinces with 2 or more troops to command its army.';
+    } else msg = 'Click one of your provinces with troops to command its army.';
   }
   if (!msg && sel >= 0 && S && myTurn()) {
     const card = S.hands[viewF][sel], c = E.CARDS[card];
@@ -1584,7 +1620,8 @@ function renderTop() {
     if (isBot(f)) label += ' · bot';
     else if (mode === 'online') { const seat = S.seats[f]; label += seat ? ` · ${seat.key === net.key ? 'you' : (net.names[seat.uid] || 'Friend')}` : ' · open'; if (seat && net.online.has(seat.key)) c.append(h('span', 'on-line')); }
     else if (viewF === f) label += ' (you)';
-    c.append(h('span', null, S.war ? `${label} · ${E.held(S, f).reduce((n, id) => n + S.war.troops[id], 0)} troops` : `${label} · ${S.hands[f].length} cards`));
+    c.append(h('span', null, S.war ? `${label} · ${E.army(S, f)}${f !== 'imp' || S.war.dutchIn ? '/' + E.supply(S, f) : ''} troops` : `${label} · ${S.hands[f].length} cards`));
+    if (S.war) c.title = `${FN[f]}: ${E.army(S, f)} troops${f !== 'imp' || S.war.dutchIn ? `, supply limit ${E.supply(S, f)}` : ''}`;
     R.append(c);
   });
   if (mode === 'online') {
@@ -1768,7 +1805,7 @@ function handReact(e) {
   const H = $('hand'); if (!handCards.length) return;
   const r = rect();
   const low = sel < 0 && e.clientY < r.bottom - 230 && e.clientY > r.top;
-  H.classList.toggle('lowered', low && !drag);
+  H.classList.toggle('lowered', (low && !drag) || (drag && moved));   // keep the hand down while you drag the map
 }
 
 function renderPiles() {
@@ -1841,6 +1878,14 @@ function renderWarControls(C) {
   pts.append(h('span', null, `${S.points[viewF]} left`));
   C.append(pts);
   if (w.reinf[viewF] > 0) C.append(h('div', 'waiting', `${w.reinf[viewF]} new troop${w.reinf[viewF] === 1 ? '' : 's'} to place`));
+  if (src && w.owner[src] === viewF && w.troops[src] - E.WAR.KEEP >= 2) {
+    const max = w.troops[src] - E.WAR.KEEP, n = sendN === null ? max : Math.min(sendN, max);
+    const row = h('div', 'sendrow'); row.append(h('span', null, 'Troops to send'));
+    const minus = button('−', 'ghost', () => { sendN = Math.max(1, n - 1); render(); }), plus = button('+', 'ghost', () => { sendN = Math.min(max, n + 1); render(); });
+    if (n <= 1) minus.setAttribute('aria-disabled', 'true'); if (n >= max) plus.setAttribute('aria-disabled', 'true');
+    row.append(minus, h('b', null, `${n} of ${max}`), plus); C.append(row);
+    C.append(h('div', 'waiting', 'Marching and sailing use this number. Attacks use the whole army (up to 3 dice). Send everyone and the province is left empty: still yours, but it loses control to any attack.'));
+  }
   if (sel >= 0) {
     const c = E.CARDS[S.hands[viewF][sel]], row = h('div', 'row');
     if (!c.target) row.append(button(`Play ${c.name}`, '', () => act(() => E.warPlay(S, sel, null))));
@@ -1862,7 +1907,7 @@ function renderInfo() {
   const row = (a, b) => { dl.append(h('dt', null, a), h('dd', null, b)); };
   if (S.war) {
     const w = S.war;
-    row('Held by', FN[w.owner[infoId]]); row('Troops', String(w.troops[infoId])); row('Control', `${w.control[infoId]} of ${E.WAR.CONTROL}`);
+    row('Held by', FN[w.owner[infoId]]); row('Troops', String(w.troops[infoId])); row('Control', `${w.control[infoId]} of ${E.WAR.CONTROL}` + (w.control[infoId] < E.WAR.CONTROL ? ', +1 at the end of any round nobody attacks it' : ''));
     if (st.fort) row('Fort', '+2 when defending');
     if (st.outpost && w.owner[infoId] === 'sep') row('Outpost', 'Rebel base');
     if (w.beach[infoId]) row('Beachhead', `${FN[w.beach[infoId].f]}, ${w.beach[infoId].n} troops`);
@@ -2038,16 +2083,16 @@ function onWarProvince(id) {
     if (c.target) { const t = E.warTargets(S, card); if (!t.includes(id)) { hint(`${c.name} can’t target ${PROV[id].name}.`, true); return; } act(() => E.warPlay(S, sel, id)); return; }
   }
   if (w.reinf[f] > 0) { if (w.owner[id] !== f) { hint('Place reinforcements in a province you hold.', true); return; } act(() => E.place(S, id)); return; }
-  const mineArmy = x => (w.owner[x] === f && w.troops[x] >= 2) || (w.beach[x] && w.beach[x].f === f);
+  const mineArmy = x => (w.owner[x] === f && w.troops[x] >= 1 + E.WAR.KEEP) || (w.beach[x] && w.beach[x].f === f);
   if (src) {
     const a = E.warActions(S, src);
     if (a.attack.includes(id)) { const keep = src; act(() => E.attack(S, keep, id)); return; }
-    if (a.move.includes(id) || a.sea.includes(id)) { const s0 = src; src = null; act(() => E.move(S, s0, id)); return; }
-    if (a.land.includes(id)) { const s0 = src; src = null; act(() => E.land(S, s0, id)); return; }
+    if (a.move.includes(id) || a.sea.includes(id)) { const s0 = src, n = sendN; src = null; sendN = null; act(() => E.move(S, s0, id, n)); return; }
+    if (a.land.includes(id)) { const s0 = src, n = sendN; src = null; sendN = null; act(() => E.land(S, s0, id, n)); return; }
     if (id === src) { src = null; render(); return; }
   }
-  if (mineArmy(id)) { src = id; infoId = null; render(); return; }
-  if (w.owner[id] === f) hint('An army needs 2 or more troops to move or attack: 1 always stays behind.');
+  if (mineArmy(id)) { src = id; sendN = null; infoId = null; render(); return; }
+  if (w.owner[id] === f) hint('This province has no troops to command.');
   infoId = infoId === id ? null : id; render();
 }
 window.addEventListener('keydown', e => { if (e.key === 'Escape' && (src || sel >= 0)) { src = null; sel = -1; render(); } });
@@ -2067,11 +2112,11 @@ async function act(fn, endsTurn = false) {
     if (S.phase === 'invasion') E.invade(S, secret);
     if (S.war && !before.war) endsTurn = true;
     if (endsTurn && (S.phase === 'play' || S.phase === 'war')) { const nh = nextHuman(S.active); passTo = nh !== viewF ? nh : null; infoId = null; src = null; }
-    if (src && S.war && !((S.war.owner[src] === viewF && S.war.troops[src] >= 2) || (S.war.beach[src] && S.war.beach[src].f === viewF))) src = null;
+    if (src && S.war && !((S.war.owner[src] === viewF && S.war.troops[src] >= 1 + E.WAR.KEEP) || (S.war.beach[src] && S.war.beach[src].f === viewF))) src = null;
     render(); return;
   }
   if (S.phase === 'invasion' && mine('sep') && secret !== null) E.invade(S, secret);
-  if (src && S.war && !((S.war.owner[src] === viewF && S.war.troops[src] >= 2) || (S.war.beach[src] && S.war.beach[src].f === viewF))) src = null;
+  if (src && S.war && !((S.war.owner[src] === viewF && S.war.troops[src] >= 1 + E.WAR.KEEP) || (S.war.beach[src] && S.war.beach[src].f === viewF))) src = null;
   render();
   await save(S);
 }
