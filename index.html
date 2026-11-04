@@ -1467,17 +1467,27 @@ let raf = 0; const frame = fn => { if (!raf) raf = requestAnimationFrame(() => {
 /* Wheel zoom: gather the scroll of each frame into one cheap preview (a CSS transform).
    The full redraw is slow, so it only happens once the scrolling stops,
    or mid-scroll when the preview would show blank edges or turn blurry. */
-let wheelAcc = 0, wheelAt = [0, 0];
+/* Smooth wheel zoom. Each wheel notch adds to a zoom "debt"; every frame pays off a share of it,
+   so the zoom glides instead of jumping in fixed steps. Only a cheap CSS transform runs while it glides;
+   the full redraw happens once it settles (or if a very fast zoom goes far past what the preview covers). */
+let zoomDebt = 0, zoomAt0 = [0, 0], zoomRaf = 0;
+function zoomStep() {
+  zoomRaf = 0;
+  const take = Math.abs(zoomDebt) < .004 ? zoomDebt : zoomDebt * .28;
+  const w0 = vb.w;
+  zoomAt(Math.exp(take), zoomAt0[0], zoomAt0[1]);
+  zoomDebt = vb.w === w0 ? 0 : zoomDebt - take;   // hit the zoom limit: forget the rest
+  const s = cv.w / vb.w;
+  if (s < .45 || s > 3.5) commit();
+  clearTimeout(commitTimer);
+  if (Math.abs(zoomDebt) > 1e-4) zoomRaf = requestAnimationFrame(zoomStep);
+  else { zoomDebt = 0; commitTimer = setTimeout(commit, 120); }
+}
 svg.addEventListener('wheel', e => {
   e.preventDefault();
-  wheelAcc += e.deltaMode === 1 ? e.deltaY * 33 : e.deltaY; wheelAt = [e.clientX, e.clientY];
-  frame(() => {
-    zoomAt(Math.exp(-wheelAcc * 0.0015), wheelAt[0], wheelAt[1]); wheelAcc = 0;
-    const s = cv.w / vb.w;
-    if (s < .65 || s > 2.5) commit();
-  });
-  clearTimeout(commitTimer);
-  commitTimer = setTimeout(commit, 160);
+  const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
+  zoomDebt = Math.max(-2.5, Math.min(2.5, zoomDebt - dy * .0018)); zoomAt0 = [e.clientX, e.clientY];
+  if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
 }, { passive: false });
 let drag = null, moved = false; const pts = new Map();
 const pinchDist = () => { const a = [...pts.values()]; return Math.hypot(a[0].x - a[1].x, a[0].y - a[1].y); };
