@@ -86,6 +86,9 @@ a.viewbtn { text-decoration: none; }
 #map.targeting .prov:not(.valid) { opacity: .38; }
 #map.targeting .prov.valid { stroke: #f6e08a; stroke-width: calc(var(--u) * 1.6px); }
 #map.targeting .prov.valid:hover { stroke: #fff4c4; stroke-width: calc(var(--u) * 2.6px); }
+#map .seaz.valid { pointer-events: auto; cursor: pointer; fill: rgba(246,224,138,.22); stroke: #b8913f; }
+#map .seaz.valid:hover { fill: rgba(246,224,138,.4); }
+#map.zooming #g-lbl, #map.zooming #g-mk, #map.zooming #g-fleet, #map.zooming #g-flav, #map.zooming #g-leg { visibility: hidden; }
 .seaz { fill: transparent; stroke: var(--line); stroke-width: calc(var(--u) * 1px); stroke-dasharray: calc(var(--u) * 5px) calc(var(--u) * 4px); pointer-events: none; }
 .lbl { font-family: var(--f-display); fill: var(--ink); pointer-events: none; text-anchor: middle; dominant-baseline: middle;
   paint-order: stroke; stroke: rgba(244,234,208,.75); stroke-width: calc(var(--u) * 2.5px); stroke-linejoin: round; }
@@ -192,6 +195,8 @@ a.viewbtn { text-decoration: none; }
 .banner.f-sep { color: #3f5e2c; } .banner.f-gov { color: #8c3b2c; } .banner.f-imp { color: #8a5216; }
 .sendrow { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; } .sendrow .btn { padding: 2px 10px; min-width: 32px; } .sendrow b { min-width: 54px; text-align: center; }
 .chip.out { opacity: .45; text-decoration: line-through; }
+.hl-layer { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; transform-origin: 0 0; pointer-events: none; will-change: opacity; }
+.fleet { cursor: pointer; } .fleet.sel path { stroke: #f6e08a; stroke-width: 2.4; } .fleet.board path:first-of-type { stroke: #f6e08a; stroke-width: 2.4; }
 .spark { position: absolute; width: 7px; height: 7px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px #2b2117; }
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
 .battle { position: absolute; width: 270px; background: rgba(36,27,18,.94); border: 1px solid #c9a24a; border-radius: 8px; padding: 10px 12px; color: #f0e2c0; font-size: 13px; display: grid; gap: 6px; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
@@ -213,6 +218,7 @@ a.viewbtn { text-decoration: none; }
   border: 1px solid var(--c, #e8c35a); padding: 3px 11px; border-radius: 4px; white-space: nowrap; animation: rise 2s ease-out forwards; }
 @keyframes rise { 0% { opacity: 0; transform: translate(-50%, -60%); } 12% { opacity: 1; transform: translate(-50%, -115%); } 80% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -175%); } }
 @media (prefers-reduced-motion: reduce) { .ripple, .ftext { animation-duration: 1.6s; } }
+@media (max-width: 1340px) { .chip { font-size: 11.5px; padding: 3px 6px; gap: 4px; } .brand { font-size: 14px; letter-spacing: .04em; } .turninfo { font-size: 12px; } .top { gap: 7px; } .top .btn { padding-inline: 8px; } }
 @media (max-width: 1520px) { .dip-label { display: none; } .chip { font-size: 12.5px; padding: 3px 8px; } .brand { font-size: 16px; } .turninfo { font-size: 13px; } .top { gap: 10px; } }
 @media (max-width: 760px) {
   .pile, .telegram { display: none; }
@@ -345,13 +351,14 @@ const Engine = (() => {
     supplies:   { name: 'Smuggled supplies', f: 'sep', cost: 0, target: null, text: '+2 points this turn. A gift from abroad.' },
     smear:      { name: 'Smear campaign', f: 'imp', cost: 1, target: null, text: 'Diplomacy −1.' },
     isab:       { name: 'Sabotage', f: 'imp', cost: 2, target: 'prov', text: 'Anywhere: destroy a fort, or else wreck a port.' },
+    iprop:      { name: 'Foreign agitators', f: 'imp', cost: 1, target: 'prov', text: 'Unrest +1 in any Republic province without a fort (not Jakarta).' },
     arms:       { name: 'Arms shipment', f: 'imp', cost: 2, target: null, text: 'Give the separatists a Smuggled supplies card.' },
     spy:        { name: 'Spy network', f: 'imp', cost: 2, target: null, text: 'The government discards a random card.' },
   };
   const DECKS = {
     gov: { search: 4, sweep: 1, crackdown: 4, fort: 3, destroy: 3, mission: 4, repair: 2 },
     sep: { propaganda: 8, raid: 4, ssab: 3, outpost: 4, relocate: 2 },
-    imp: { smear: 3, isab: 5, arms: 4, spy: 4 },
+    imp: { smear: 3, isab: 5, arms: 4, spy: 4, iprop: 4 },
   };
 
   let MAP = null;           // { provinces: [{id,name,owner,neighbors}], ports: [{province,name}] }
@@ -448,6 +455,7 @@ const Engine = (() => {
         const near = within(src, 2);
         return RS.filter(id => near.has(id) && canRise(id));
       }
+      case 'iprop': return RS.filter(id => !P[id].fort);
       case 'raid': return RS.filter(id => P[id].loy >= 1 && canRise(id));
       case 'ssab': return RS.filter(id => P[id].loy >= 1 && (P[id].fort || portOk(id)));
       case 'outpost': return RS.filter(id => P[id].loy === 3 && !P[id].outpost);
@@ -487,6 +495,7 @@ const Engine = (() => {
       case 'repair': S.ports[target].broken = false; log(S, f, `The port in ${nm} is repaired.`); break;
       case 'propaganda': at.loy = Math.min(3, at.loy + 1); log(S, f, 'Rebel propaganda spreads somewhere.'); break;
       case 'raid': at.loy = Math.min(3, at.loy + 2); log(S, f, 'Rebels raid somewhere in the Republic.'); break;
+      case 'iprop': at.loy = Math.min(3, at.loy + 1); log(S, f, 'Foreign agitators stir up unrest somewhere.'); break;
       case 'ssab': case 'isab':
         if (at.fort) { at.fort = false; log(S, f, `The fort in ${nm} is sabotaged.`); }
         else { S.ports[target].broken = true; log(S, f, `The port in ${nm} is wrecked.`); }
@@ -503,7 +512,7 @@ const Engine = (() => {
         break;
       }
     }
-    const secretMove = card === 'relocate' || card === 'propaganda' || card === 'raid';
+    const secretMove = card === 'relocate' || card === 'propaganda' || card === 'raid' || card === 'iprop';
     stamp(S, { f, card, target: secretMove ? null : target });   // never reveal where the rebels worked
     checkEnd(S);
     return out;
@@ -536,6 +545,7 @@ const Engine = (() => {
     S.points[f] -= 1;
     if (card !== 'supplies') S.discards[f].push(card);
     log(S, f, `${FNAME[f]} discard a card.`);
+    stamp(S, { f, card: 'discard', target: null });
     return {};
   }
 
@@ -574,14 +584,15 @@ const Engine = (() => {
   /* ================= PHASE 2: CIVIL WAR =================
      Every province has an owner, troops and 3 control points. Attacks are push-and-pull:
      an attacker win takes a control point (at 0 the province falls), a defender win kills an attacking troop. */
-  const WAR = { KEEP: 0, ROUNDS: 15, PORT_LIFT: 6, PTS_GAIN: 1, PTS_GAIN_DUTCH: 2, PTS_JAKARTA: 4, PTS_OUTPOST: 1, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
+  const WAR = { FLEET_CAP: 4, FLEET_PORT_CAP: 8, SAIL_ZONES: 2, SAIL_COST: 1, LAND_COST: 2, LAUNCH_COST: 1, KEEP: 0, ROUNDS: 15, PORT_LIFT: 6, PTS_GAIN: 1, PTS_GAIN_DUTCH: 1, PTS_JAKARTA: 5, PTS_OUTPOST: 1, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
   Object.assign(CARDS, {
     w_reinforce: { name: 'Reinforcements', f: 'gov', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
     w_air:       { name: 'Air strike', f: 'gov', cost: 1, target: null, war: true, text: 'Your next attack this turn gets +2.' },
     w_fort:      { name: 'Fortify', f: 'gov', cost: 2, target: 'own', war: true, text: 'Build a fort: +2 when defending.' },
     w_mission:   { name: 'Diplomatic mission', f: 'gov', cost: 2, target: null, war: true, text: 'Diplomacy +1.' },
-    w_transport: { name: 'Naval transport', f: 'any', cost: 1, target: null, war: true, text: 'Your next sea move or landing this turn is free, carries up to 8 troops and has no beach penalty.' },
+    w_transport: { name: 'Naval transport', f: 'any', cost: 1, target: null, war: true, text: 'Your next sail-and-land this turn is free, and lands with no beach penalty.' },
     w_recruit:   { name: 'Recruit', f: 'sep', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
+    w_port:      { name: 'Build a harbour', f: 'any', cost: 4, target: 'own', war: true, text: 'A new port in a coastal province you fully control: room for one more fleet.' },
     w_massed:    { name: 'Massed assault', f: 'any', cost: 1, target: null, war: true, text: 'Your next attack this turn rolls up to 5 dice.' },
     w_entrench:  { name: 'Entrench', f: 'sep', cost: 1, target: 'own', war: true, text: '+2 when defending this province until your next turn.' },
     w_outpost:   { name: 'Establish outpost', f: 'sep', cost: 3, target: 'own', war: true, text: 'A new outpost in a province you fully control.' },
@@ -591,9 +602,9 @@ const Engine = (() => {
     w_legion:    { name: 'Foreign legion', f: 'imp', cost: 2, target: null, war: true, text: 'Before the Dutch join: +2 rebel troops at an outpost. After: +3 Dutch troops.' },
   });
   const WAR_DECKS = {
-    gov: { w_reinforce: 5, w_air: 3, w_fort: 2, w_mission: 4, w_transport: 3, w_massed: 3 },
-    sep: { w_recruit: 5, w_entrench: 3, w_outpost: 3, w_hitrun: 3, w_agitate: 3, w_massed: 2, w_transport: 2 },
-    imp: { w_blockade: 4, smear: 4, arms: 3, w_legion: 4, w_massed: 3, w_transport: 2 },
+    gov: { w_reinforce: 5, w_air: 3, w_fort: 2, w_mission: 4, w_transport: 3, w_massed: 3, w_port: 2 },
+    sep: { w_recruit: 5, w_entrench: 3, w_outpost: 3, w_hitrun: 3, w_agitate: 3, w_massed: 2, w_transport: 2, w_port: 2 },
+    imp: { w_blockade: 4, smear: 4, arms: 3, w_legion: 4, w_massed: 3, w_transport: 2, w_port: 2 },
   };
 
   /* exact chance that `a` dice + ba beat `b` dice + bb (ties to the defender) */
@@ -615,7 +626,8 @@ const Engine = (() => {
   const W = S => S.war;
   const held = (S, f) => Object.keys(S.war.owner).filter(id => S.war.owner[id] === f);
   const rebelOutposts = S => held(S, 'sep').filter(id => S.prov[id].outpost);
-  const portWorks = (S, id) => hasPort(id) && !S.ports[id].broken && !(S.war.blockade[id]);
+  const isPort = (S, id) => !!S.ports[id];   // map ports plus any built during the war
+  const portWorks = (S, id) => isPort(S, id) && !S.ports[id].broken && !(S.war.blockade[id]);
   function seaReach(S, id) {
     const zones = new Set(byId[id].seas || []);
     (byId[id].seas || []).forEach(z => (SEA_NB[z] || []).forEach(n => zones.add(n)));
@@ -627,7 +639,7 @@ const Engine = (() => {
   function warPoints(S, f) {
     if (f === 'gov') return S.diplomacy <= DIP_PRESSURE ? WAR.GOV_PTS - 1 : WAR.GOV_PTS;
     if (f === 'sep') return WAR.SEP_PTS;
-    return S.war.dutchIn ? WAR.IMP_PTS : 3;
+    return WAR.IMP_PTS;
   }
   /* supply limit: the most troops a faction's territory can keep */
   function supply(S, f) {
@@ -638,7 +650,8 @@ const Engine = (() => {
   }
   function army(S, f) {
     const w = S.war;
-    return held(S, f).reduce((a, id) => a + w.troops[id], 0) + Object.values(w.beach).filter(b => b && b.f === f).reduce((a, b) => a + b.n, 0);
+    return held(S, f).reduce((a, id) => a + w.troops[id], 0) + Object.values(w.beach).filter(b => b && b.f === f).reduce((a, b) => a + b.n, 0)
+      + (w.fleets || []).filter(x => x.f === f).reduce((a, x) => a + x.n, 0);
   }
   function addTroops(S, f, id, n) {
     const add = Math.max(0, Math.min(n, supply(S, f) - army(S, f)));
@@ -745,6 +758,7 @@ const Engine = (() => {
     S.points[f] = warPoints(S, f);
     w.reinf[f] = f === 'gov' ? Math.min(reinforcements(S, f), held(S, f).length) : reinforcements(S, f);
     w.buff[f] = {}; w.placed = {};
+    (w.fleets || []).forEach(x => { if (x.f === f) x.moved = false; });
     Object.keys(w.entrench).forEach(id => { if (w.entrench[id] === f) delete w.entrench[id]; });
     if (f === 'imp') w.blockade = {};
   }
@@ -758,14 +772,99 @@ const Engine = (() => {
     if (w.owner[src] !== f || w.troops[src] < 1 + WAR.KEEP) return out;
     if (f === 'imp' && !w.dutchIn) return out;
     byId[src].neighbors.forEach(n => { if (w.owner[n] === f) out.move.push(n); else if (canHit(n)) out.attack.push(n); });
-    if (portWorks(S, src)) (f === 'imp' ? MAP.provinces.map(p => p.id).filter(id => id !== src && (byId[id].seas || []).length) : seaReach(S, src)).forEach(n => {
-      if (out.move.includes(n) || out.attack.includes(n)) return;
-      if (w.owner[n] === f) out.sea.push(n);
-      else if (canHit(n) && !(w.beach[n] && w.beach[n].f !== f)) out.land.push(n);
-    });
-    return out;
+    return out;   // crossing the sea now goes through fleets (see below)
   }
   function seaCost(S, f) { return S.war.buff[f].transport ? 0 : 2; }
+
+  /* ---------- fleets: each working port you hold supports one fleet; fleets carry troops between coasts ---------- */
+  const fleetsOf = (S, f) => (S.war.fleets || []).filter(x => x.f === f);
+  const fleetCap = (S, f) => held(S, f).filter(id => isPort(S, id) && !S.ports[id].broken).length;
+  function zonesWithin(z, k) {
+    const seen = new Map([[z, 0]]), q = [z];
+    while (q.length) { const a = q.shift(), d = seen.get(a); if (d >= k) continue; (SEA_NB[a] || []).forEach(b => { if (!seen.has(b)) { seen.set(b, d + 1); q.push(b); } }); }
+    return seen;
+  }
+  function canLaunch(S, f) { return S.phase === 'war' && (f !== 'imp' || S.war.dutchIn) && fleetsOf(S, f).length < fleetCap(S, f); }
+  function launchPorts(S, f) { return canLaunch(S, f) ? held(S, f).filter(id => portWorks(S, id)) : []; }
+  function launch(S, portId) {
+    const f = S.active, w = S.war;
+    if (!launchPorts(S, f).includes(portId)) return { error: fleetsOf(S, f).length >= fleetCap(S, f) ? `You have a fleet for each of your ports (${fleetCap(S, f)}). Build or take a port for more.` : 'Launch a fleet from a working port you hold.' };
+    if (S.points[f] < WAR.LAUNCH_COST) return { error: `Launching a fleet costs ${WAR.LAUNCH_COST} point.` };
+    S.points[f] -= WAR.LAUNCH_COST;
+    w.fleets = w.fleets || []; w.fleetSeq = (w.fleetSeq || 0) + 1;
+    const x = { id: 'fl' + w.fleetSeq, f, zone: byId[portId].seas[0], n: 0, home: portId, moved: false };
+    w.fleets.push(x);
+    log(S, f, `A ${FNAME[f].toLowerCase()} fleet puts to sea from ${nameOf(portId)}.`);
+    stamp(S, { f, card: 'fleet', target: portId, fleet: x.id });
+    return {};
+  }
+  /* free: troops in a coastal province (or a beachhead) go aboard a fleet in a touching sea zone */
+  function embarkMax(S, src, x) {
+    const w = S.war, f = S.active;
+    if (!x || x.f !== f || !(byId[src].seas || []).includes(x.zone)) return 0;
+    const beach = w.beach[src] && w.beach[src].f === f;
+    if (!beach && w.owner[src] !== f) return 0;
+    const cap = beach ? WAR.FLEET_CAP : portWorks(S, src) ? WAR.FLEET_PORT_CAP : WAR.FLEET_CAP;
+    const have = beach ? w.beach[src].n : w.troops[src] - WAR.KEEP;
+    return Math.max(0, Math.min(have, cap - x.n));
+  }
+  function embark(S, src, fleetId, want) {
+    const f = S.active, w = S.war, x = (w.fleets || []).find(y => y.id === fleetId);
+    const max = embarkMax(S, src, x);
+    if (!max) return { error: x && x.n >= WAR.FLEET_CAP && !portWorks(S, src) ? `Only a port can load more than ${WAR.FLEET_CAP} troops onto a fleet.` : 'Those troops can’t board that fleet.' };
+    const n = want ? Math.max(1, Math.min(max, want)) : max;
+    if (w.beach[src] && w.beach[src].f === f) { w.beach[src].n -= n; if (w.beach[src].n <= 0) delete w.beach[src]; }
+    else w.troops[src] -= n;
+    x.n += n;
+    log(S, f, `${n} troop${n === 1 ? '' : 's'} board a fleet off ${nameOf(src)}.`);
+    stamp(S, { f, card: 'embark', src, target: src, n, fleet: x.id });
+    return {};
+  }
+  function sailZones(S, x) { return x && !x.moved ? [...zonesWithin(x.zone, WAR.SAIL_ZONES).keys()].filter(z => z !== x.zone) : []; }
+  function sail(S, fleetId, zone) {
+    const f = S.active, w = S.war, x = (w.fleets || []).find(y => y.id === fleetId);
+    if (!x || x.f !== f) return { error: 'Choose one of your fleets.' };
+    if (x.moved) return { error: 'That fleet has already sailed this turn.' };
+    if (!sailZones(S, x).includes(zone)) return { error: `A fleet sails up to ${WAR.SAIL_ZONES} sea zones a turn.` };
+    if (S.points[f] < WAR.SAIL_COST) return { error: `Sailing costs ${WAR.SAIL_COST} point.` };
+    S.points[f] -= WAR.SAIL_COST; const from = x.zone; x.zone = zone; x.moved = true;
+    log(S, f, `A ${FNAME[f].toLowerCase()} fleet sails to the ${seaName(zone)}.`);
+    stamp(S, { f, card: 'sail', fleet: x.id, from, zone, target: null });
+    return {};
+  }
+  /* coasts a fleet can land on this turn: any coast touching a sea zone within sailing range */
+  function landTargets(S, x) {
+    if (!x || x.moved || !x.n) return [];
+    const zs = zonesWithin(x.zone, WAR.SAIL_ZONES), w = S.war, f = x.f;
+    const canHit = id => w.owner[id] !== f && (w.owner[id] !== 'imp' || w.dutchIn || f === 'imp');
+    return MAP.provinces.map(p => p.id).filter(id => (byId[id].seas || []).some(z => zs.has(z)) && (w.owner[id] === f || (canHit(id) && !(w.beach[id] && w.beach[id].f !== f))));
+  }
+  function landFleet(S, fleetId, dst, rng = Math.random) {
+    const f = S.active, w = S.war, x = (w.fleets || []).find(y => y.id === fleetId);
+    if (!x || x.f !== f) return { error: 'Choose one of your fleets.' };
+    if (!landTargets(S, x).includes(dst)) return { error: x.moved ? 'That fleet has already sailed this turn.' : !x.n ? 'That fleet carries no troops.' : 'That coast is out of reach.' };
+    const free = !!w.buff[f].transport, cost = free ? 0 : WAR.LAND_COST;
+    if (S.points[f] < cost) return { error: `Sailing and landing costs ${WAR.LAND_COST} points.` };
+    S.points[f] -= cost; w.buff[f].transport = false;
+    const zs = zonesWithin(x.zone, WAR.SAIL_ZONES);
+    x.zone = byId[dst].seas.filter(z => zs.has(z)).sort((a, b) => zs.get(a) - zs.get(b))[0]; x.moved = true;
+    const port = portWorks(S, dst), n = port ? x.n : Math.min(WAR.FLEET_CAP, x.n);   // a beach takes only a few boats at a time
+    x.n -= n;
+    if (w.owner[dst] === f) {
+      w.troops[dst] += n;
+      log(S, f, `${n} troops come ashore in ${nameOf(dst)}.`);
+      stamp(S, { f, card: 'land', src: dst, target: dst, n, fleet: x.id });
+      return {};
+    }
+    const b = w.beach[dst] || { f, n: 0, fresh: false };
+    b.n += n; b.fresh = b.fresh || (!free && !port); w.beach[dst] = b;
+    log(S, f, `${n} troops storm ${port ? 'the port of' : 'the beaches of'} ${nameOf(dst)}!`);
+    stamp(S, { f, card: 'land', src: dst, target: dst, n, fleet: x.id });
+    // a landing on an enemy coast fights at once, as part of the landing
+    S.points[f] += 1; const r = attack(S, dst, dst, rng); if (r.error) S.points[f] -= 1;
+    return {};
+  }
+  const seaName = z => { const s = (MAP.seas || []).find(q => q.id === z); return s ? s.name : 'open sea'; };
 
   function warGuard(S, f) {
     if (S.phase !== 'war') return 'The war is not on.';
@@ -876,7 +975,7 @@ const Engine = (() => {
     if (c.cost > S.points[f]) return { error: `${c.name} costs ${c.cost}. You have ${S.points[f]} left.` };
     const valid = warTargets(S, card);
     if (valid && !valid.includes(target)) return { error: `${c.name} can't target that province.` };
-    if (card === 'w_transport' && !held(S, f).some(id => portWorks(S, id))) return { error: 'Naval transport needs a working port you hold.' };
+    if (card === 'w_transport' && !(w.fleets || []).some(x => x.f === f)) return { error: 'Naval transport needs a fleet at sea.' };
     if (card === 'w_transport' && f === 'imp' && !w.dutchIn) return { error: 'The Dutch navy can only carry troops once the Dutch are at war.' };
     if (card === 'w_reinforce' || card === 'w_recruit' || card === 'w_legion') {
       const who = card === 'w_legion' ? (w.dutchIn ? 'imp' : 'sep') : f;
@@ -886,6 +985,7 @@ const Engine = (() => {
     const nm = target && nameOf(target);
     switch (card) {
       case 'w_reinforce': case 'w_recruit': { const n = addTroops(S, f, target, 3); log(S, f, n ? `Fresh troops arrive in ${nm} (+${n}).` : `No fresh troops: the ${FNAME[f].toLowerCase()} are at their supply limit.`); break; }
+      case 'w_port': S.ports[target] = { broken: false, built: true }; log(S, f, `A new harbour is built in ${nm}: room for one more fleet.`); break;
       case 'w_massed': w.buff[f].massed = true; log(S, f, 'Every soldier is thrown into the next attack (up to 5 dice).'); break;
       case 'w_air': w.buff[f].air = true; log(S, f, 'Aircraft are ready for the next attack (+2).'); break;
       case 'w_fort': S.prov[target].fort = true; log(S, f, `${nm} is fortified.`); break;
@@ -899,7 +999,7 @@ const Engine = (() => {
         break;
       case 'w_blockade': w.blockade[target] = true; log(S, f, `The Dutch navy blockades ${nameOf(target)}.`); break;
       case 'w_legion': {
-        if (w.dutchIn) { const d = held(S, 'imp')[0]; if (d) { const n = addTroops(S, 'imp', d, 3); log(S, f, n ? `Dutch reinforcements land in ${nameOf(d)} (+${n}).` : 'The Dutch are at their supply limit.'); } }
+        if (w.dutchIn) { const d = held(S, 'imp').find(id => byId[id].owner === 'imp'); if (d) { const n = addTroops(S, 'imp', d, 3); log(S, f, n ? `Dutch reinforcements land in ${nameOf(d)} (+${n}).` : 'The Dutch are at their supply limit.'); } }
         else { const o = rebelOutposts(S)[0]; if (o) { const n = addTroops(S, 'sep', o, 2); log(S, f, n ? `Foreign volunteers join the rebels in ${nameOf(o)} (+${n}).` : 'The rebels are at their supply limit.'); } }
         break;
       }
@@ -916,6 +1016,9 @@ const Engine = (() => {
     const mineP = held(S, f);
     if (card === 'w_fort') return mineP.filter(id => !S.prov[id].fort);
     if (card === 'w_outpost') return mineP.filter(id => !S.prov[id].outpost && w.control[id] === WAR.CONTROL);
+    if (card === 'w_reinforce') return mineP.filter(id => id === 'jakarta' || S.prov[id].fort);   // Republic troops gather at forts and the capital
+    if (card === 'w_recruit') return rebelOutposts(S);                                                // rebels recruit at their outposts
+    if (card === 'w_port') return mineP.filter(id => (byId[id].seas || []).length && !isPort(S, id) && w.control[id] === WAR.CONTROL);
     if (c.target === 'own') return mineP;
     if (card === 'w_agitate') { const s = new Set(); mineP.forEach(id => byId[id].neighbors.forEach(n => { if (w.owner[n] === 'gov') s.add(n); })); return [...s]; }
     if (card === 'w_blockade') return MAP.ports.map(p => p.province).filter(id => !w.blockade[id] && !S.ports[id].broken);
@@ -970,7 +1073,7 @@ const Engine = (() => {
     // a faction with no land and no troops ashore is knocked out (the Dutch only count once at war)
     FACTIONS.forEach(f => {
       if (w.out[f] || (f === 'imp' && !w.dutchIn)) return;
-      if (!held(S, f).length && !Object.values(w.beach).some(b => b && b.f === f)) { w.out[f] = true; log(S, f, `The ${FNAME[f].toLowerCase()} are knocked out of the war.`); }
+      if (!held(S, f).length && !Object.values(w.beach).some(b => b && b.f === f) && !fleetsOf(S, f).some(x => x.n)) { w.out[f] = true; w.fleets = (w.fleets || []).filter(x => x.f !== f); log(S, f, `The ${FNAME[f].toLowerCase()} are knocked out of the war.`); }
     });
     const alive = FACTIONS.filter(f => !w.out[f] && (f !== 'imp' || w.dutchIn || held(S, f).length));
     if (alive.length === 1) return endWar(S, alive[0], `The ${FNAME[alive[0]].toLowerCase()} are the last ones standing.`);
@@ -1003,11 +1106,7 @@ const Engine = (() => {
     const hand = S.hands[f];
     if (f === 'imp' && w.dutchIn) {
       const atk = bestAttack(S, rng); if (atk) return atk;
-      if (S.points[f] >= 2) {
-        const opts = [];
-        held(S, f).forEach(src => { if (w.troops[src] < 4) return; warActions(S, src).land.forEach(dst => opts.push({ src, dst, v: (dst === 'jakarta' ? 3 : w.owner[dst] === 'gov' ? 1.2 : 1) - w.troops[dst] * .25 + rng() * .3 })); });
-        if (opts.length && !Object.keys(w.beach).some(id => w.beach[id].f === f)) { const o = opts.sort((a, b) => b.v - a.v)[0]; return { kind: 'land', src: o.src, dst: o.dst }; }
-      }
+      const nav = navalBot(S, rng, true); if (nav) return nav;
     }
     for (let i = 0; i < hand.length; i++) {
       const card = hand[i], c = CARDS[card]; if (!c.war && card !== 'smear' && card !== 'arms' && card !== 'supplies') continue;
@@ -1015,12 +1114,14 @@ const Engine = (() => {
       const t = warTargets(S, card);
       if (card === 'supplies') return { kind: 'card', idx: i, target: null };
       if (card === 'w_mission' && S.diplomacy <= 3 && S.points[f] >= 4) return { kind: 'card', idx: i, target: null };
+      if (card === 'w_port' && t.length && fleetCap(S, f) < 2 && S.points[f] >= 5) return { kind: 'card', idx: i, target: t[Math.floor(rng() * t.length)] };
+      if (card === 'w_transport' && fleetsOf(S, f).some(x => x.n) && S.points[f] >= 2) return { kind: 'card', idx: i, target: null };
       if (card === 'w_massed' && !w.buff[f].massed && S.points[f] >= 2 && held(S, f).some(id => w.troops[id] >= 6 && warActions(S, id).attack.length)) return { kind: 'card', idx: i, target: null };
-      if (card === 'w_reinforce' && army(S, f) < supply(S, f) && w.owner.jakarta === 'gov' && w.troops.jakarta < jakartaThreat(S) + 2) return { kind: 'card', idx: i, target: 'jakarta' };
+      if (card === 'w_reinforce' && t.includes('jakarta') && army(S, f) < supply(S, f) && w.troops.jakarta < jakartaThreat(S) + 2) return { kind: 'card', idx: i, target: 'jakarta' };
       if ((card === 'w_reinforce' || card === 'w_recruit') && army(S, f) < supply(S, f) && frontier.length && S.points[f] >= 3) {
         // build up one strike force: the frontier province next to the juiciest target, preferring one that already has troops
         const score = id => Math.max(0, ...byId[id].neighbors.filter(enemyOf).map(goal)) * 2 + w.troops[id] * .3 + rng() * .2;
-        return { kind: 'card', idx: i, target: frontier.slice().sort((a, b) => score(b) - score(a))[0] };
+        if (t.length) return { kind: 'card', idx: i, target: t.slice().sort((a, b) => score(b) - score(a))[0] };
       }
       if (card === 'w_outpost' && t.length && rebelOutposts(S).length < 3) return { kind: 'card', idx: i, target: t[0] };
       if (card === 'w_entrench' && S.points[f] <= 2) { const o = rebelOutposts(S).filter(id => frontier.includes(id))[0]; if (o) return { kind: 'card', idx: i, target: o }; }
@@ -1053,19 +1154,47 @@ const Engine = (() => {
         held(S, f).forEach(src => {
           // safe rear provinces send even their last troops forward; frontline ones keep some back
           const rear = !byId[src].neighbors.some(n => w.owner[n] !== f && (w.owner[n] !== 'imp' || w.dutchIn || f === 'imp')) && !(w.beach[src] && w.beach[src].f !== f);
-          if (w.troops[src] < (rear ? 1 + WAR.KEEP : 3) || distTo[src] === undefined || distTo[src] <= 1 || (src === 'jakarta' && f === 'gov')) return;
-          byId[src].neighbors.forEach(n => { if (w.owner[n] === f && distTo[n] !== undefined && distTo[n] < distTo[src]) { const v = w.troops[src] - distTo[n]; if (!bestMove || v > bestMove.v) bestMove = { kind: 'move', src, dst: n, v }; } });
+          const spare = src === 'jakarta' && f === 'gov' ? w.troops.jakarta - (jakartaThreat(S) + 3) : null;   // the capital keeps its guard, sends the rest
+          if ((spare !== null ? spare < 2 : w.troops[src] < (rear ? 1 + WAR.KEEP : 3)) || distTo[src] === undefined || distTo[src] <= 1) return;
+          byId[src].neighbors.forEach(n => { if (w.owner[n] === f && distTo[n] !== undefined && distTo[n] < distTo[src]) { const v = w.troops[src] - distTo[n]; if (!bestMove || v > bestMove.v) bestMove = { kind: 'move', src, dst: n, v, n: spare !== null ? spare : undefined }; } });
         });
         if (bestMove) return bestMove;
       }
     }
-    // 5. land if there is no land route to the enemy's key provinces
-    if (S.points[f] >= 2 && (f !== 'imp' || w.dutchIn)) {
-      const opts = [];
-      held(S, f).forEach(src => { if (w.troops[src] < 4) return; warActions(S, src).land.forEach(dst => { const v = goal(dst); if (v >= 1) opts.push({ src, dst, v: v - w.troops[dst] * .3 }); }); });
-      Object.keys(w.beach).forEach(id => { if (w.beach[id].f === f) opts.length = 0; });
+    // 5. go by sea when there is no land route to the enemy's key provinces
+    if (f !== 'imp' || w.dutchIn) {
       const keyNear = frontier.some(id => byId[id].neighbors.some(n => goal(n) >= (f === 'gov' ? 3 : 1)));
-      if (opts.length && !keyNear) { const o = opts.sort((a, b) => b.v - a.v)[0]; return { kind: 'land', src: o.src, dst: o.dst }; }
+      const nav = navalBot(S, rng, !keyNear); if (nav) return nav;
+    }
+    return null;
+  }
+  /* bots at sea: land loaded fleets on the best coast, load big idle armies, launch or move fleets to them */
+  function navalBot(S, rng, eager) {
+    const f = S.active, w = S.war, mine = fleetsOf(S, f);
+    const goal = id => f === 'gov' ? (S.prov[id].outpost && w.owner[id] === 'sep' ? 3 : w.owner[id] === 'sep' ? 1.5 : 1) : id === 'jakarta' ? 4 : w.owner[id] === 'gov' ? 1.2 : 1;
+    // 1. land a loaded fleet
+    if (S.points[f] >= WAR.LAND_COST) for (const x of mine) {
+      const opts = landTargets(S, x).filter(id => w.owner[id] !== f).map(id => ({ id, v: goal(id) * (Math.min(x.n, portWorks(S, id) ? x.n : WAR.FLEET_CAP) >= w.troops[id] ? 1 : .3) - w.troops[id] * .2 + rng() * .3 }));
+      if (opts.length) { const o = opts.sort((a, b) => b.v - a.v)[0]; if (o.v > .4) return { kind: 'fland', fleet: x.id, dst: o.id }; }
+    }
+    if (!eager) return null;
+    // armies with nothing to do on land: big, and no enemy next door
+    const idle = held(S, f).filter(id => w.troops[id] >= 4 && (byId[id].seas || []).length && !byId[id].neighbors.some(n => w.owner[n] !== f && (w.owner[n] !== 'imp' || w.dutchIn || f === 'imp')) && !(f === 'gov' && id === 'jakarta'))
+      .sort((a, b) => w.troops[b] - w.troops[a]);
+    // 2. board a fleet that is already alongside
+    for (const src of idle) for (const x of mine) { if (embarkMax(S, src, x) >= 2) return { kind: 'embark', src, fleet: x.id }; }
+    // 3. launch a fleet where an idle army waits (or at any port)
+    if (idle.length && S.points[f] >= WAR.LAUNCH_COST && canLaunch(S, f)) {
+      const ports = launchPorts(S, f);
+      const p = ports.find(id => idle.includes(id)) || ports.find(id => idle.some(a => (byId[a].seas || []).includes(byId[id].seas[0])));
+      if (p) return { kind: 'launch', id: p };
+    }
+    // 4. sail an empty fleet toward an idle army
+    if (idle.length && S.points[f] >= WAR.SAIL_COST) for (const x of mine) {
+      if (x.n || x.moved) continue;
+      const want = new Set(byId[idle[0]].seas || []); if (want.has(x.zone)) continue;
+      const z = sailZones(S, x).sort((a, b) => (want.has(b) ? 1 : 0) - (want.has(a) ? 1 : 0))[0];
+      if (z && want.has(z)) return { kind: 'sail', fleet: x.id, zone: z };
     }
     return null;
   }
@@ -1101,7 +1230,11 @@ const Engine = (() => {
     if (m.kind === 'card') return warPlay(S, m.idx, m.target, rng);
     if (m.kind === 'attack') return attack(S, m.src, m.dst, rng);
     if (m.kind === 'land') return land(S, m.src, m.dst);
-    if (m.kind === 'move') return move(S, m.src, m.dst);
+    if (m.kind === 'launch') return launch(S, m.id);
+    if (m.kind === 'embark') return embark(S, m.src, m.fleet);
+    if (m.kind === 'sail') return sail(S, m.fleet, m.zone);
+    if (m.kind === 'fland') return landFleet(S, m.fleet, m.dst, rng);
+    if (m.kind === 'move') return move(S, m.src, m.dst, m.n);
     return { error: 'unknown move' };
   }
 
@@ -1160,6 +1293,7 @@ const Engine = (() => {
     if (by('arms').length && rng() < .55) return by('arms')[0];
     if (by('smear').length && rng() < .7) return by('smear')[0];
     if (by('spy').length && S.hands.gov.length >= 4) return by('spy')[0];
+    const agit = by('iprop'); if (agit.length && rng() < .6) { const near = agit.filter(o => byId[o.target].neighbors.some(n => P[n].outpost)); return pick(near.length ? near : agit); }
     const fort = by('isab').filter(o => P[o.target].fort); if (fort.length) return pick(fort);
     if (by('arms').length) return by('arms')[0];
     if (by('smear').length) return by('smear')[0];
@@ -1170,7 +1304,7 @@ const Engine = (() => {
   return { FACTIONS, botMove, phase1Bot, invade, FNAME, CARDS, LEVEL, HAND, DIP_MAX, DIP_PRESSURE, OUTPOSTS_FOR_WAR,
     init, newGame, hideoutChoices, chooseHideout, targets, play, answerFor, resolveSearch,
     discard, canDeclareWar, declareWar, endTurn, basePoints, outposts, nameOf, hasPort,
-    WAR, startWar, warSandbox, supply, army, roundPoints, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
+    WAR, startWar, warSandbox, supply, army, roundPoints, fleetsOf, fleetCap, canLaunch, launchPorts, launch, embark, embarkMax, sail, sailZones, landTargets, landFleet, isPort, zonesWithin, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
     odds, held, rebelOutposts, portWorks, seaReach, reinforcements, warPoints };
 })();
 /* ENGINE:END */
@@ -1252,7 +1386,8 @@ const TABLE = { x: -280, y: -190, w: D.W + 560, h: D.H + 520 };
   el('rect', { x: 2, y: 2, width: 56, height: 18, fill: '#c8261d' }, fl);
   el('rect', { x: 2, y: 20, width: 56, height: 18, fill: '#f6f2ea', stroke: '#c9c1b0', 'stroke-width': .6 }, fl);
 })();
-D.seas.forEach(s => el('path', { d: s.cell, class: 'seaz' }, $('g-sea')));
+const seaEl = {};
+D.seas.forEach(s => { const e = el('path', { d: s.cell, class: 'seaz' }, $('g-sea')); e.addEventListener('click', () => { if (!moved) onSeaZone(s.id); }); seaEl[s.id] = e; });
 D.foreign.forEach(f => {
   el('path', { d: f.d, fill: '#d6cdb7', stroke: 'none' }, $('g-for'));
   el('path', { d: f.d, fill: 'url(#hatch)', stroke: '#8a7a5c', style: 'stroke-width:calc(var(--u) * .6px)' }, $('g-for'));
@@ -1270,7 +1405,7 @@ function addLabel(xy, text, cls, base, prio) {
   const t = el('text', { x: xy[0], y: xy[1], class: 'lbl ' + cls }, $('g-lbl'));
   const lines = text.split('\n');
   lines.forEach((line, i) => { const s = el('tspan', { x: xy[0], dy: i === 0 ? `${-(lines.length - 1) * 0.6}em` : '1.2em' }, t); s.textContent = line; });
-  labels.push({ t, base, prio });
+  labels.push({ t, base, prio, xy });
 }
 D.provinces.forEach(p => addLabel(p.label, p.name, '', p.group === 'Java' ? 10.5 : 12, p.group === 'Java' ? 1 : 0));
 D.seas.forEach(s => addLabel(s.label, s.name.toUpperCase(), 'sea', 11, 3));
@@ -1341,9 +1476,12 @@ function encircled() {
   });
   return out;
 }
+const frontKey = {};
 function drawFront(id, enc) {
-  const g = frontEl[id], w = S.war, o = w.owner[id]; g.textContent = '';
+  const g = frontEl[id], w = S.war, o = w.owner[id];
   const [cx, cy] = cityXY(id), c = w.control[id], pr = w.press[id];
+  const key = JSON.stringify([o, c, pr, enc[id] || 0, w.troops[id], w.beach[id] ? w.beach[id].f : 0, pr ? PROV[id].neighbors.filter(n => w.owner[n] === pr) : 0]);
+  if (frontKey[id] === key) return; frontKey[id] = key; g.textContent = '';
   const pressed = pr && pr !== o && c < E.WAR.CONTROL;
   // cut off from friendly land AND under attack: the pocket is being squeezed
   if (enc[id] && pressed) {
@@ -1417,7 +1555,8 @@ function renderLegend() {
       [`<path d="M-5 5V-2.5h2v-2.5h2v2.5h2v-2.5h2v2.5H5v7.5z" fill="#9a8a70" stroke="#3b2c1c" stroke-width=".9"/>`, 'Fort (+2 defence)'],
       [`<path d="M-3 6V-6" stroke="#2b2117" stroke-width="1.4"/><path d="M-3 -6h8l-2.5 3 2.5 3h-8z" fill="#6f9447" stroke="#2b2117" stroke-width=".8"/>`, 'Rebel outpost']);
   }
-  rows.push([`<circle r="3.6" fill="#f4ead0" stroke="#3b2c1c"/><circle r="1.2" fill="#3b2c1c"/>`, 'Port'], [`<rect x="-2" y="-2" width="4" height="4" fill="#f4ead0" stroke="#2b2117" stroke-width=".9"/>`, 'City']);
+  if (war) rows.push([`<path d="M-7 0h14l-3 4h-9z" fill="#8c3b2c"/><path d="M-1 0V-7M-1 -6.5l5 6h-5z" fill="#f4ead0" stroke="#8c3b2c" stroke-width=".8"/>`, 'Fleet (troops aboard)']);
+  rows.push([`<circle r="3.6" fill="#f4ead0" stroke="#3b2c1c"/><circle r="1.2" fill="#3b2c1c"/>`, 'Port (one fleet each)'], [`<rect x="-2" y="-2" width="4" height="4" fill="#f4ead0" stroke="#2b2117" stroke-width=".9"/>`, 'City']);
   const H = 20 + rows.length * 15;
   el('rect', { x: 0, y: 172 - H - 4, width: 148, height: H, fill: '#efe3c4', stroke: '#3b2c1c', 'stroke-width': .8, opacity: .96 }, gLeg);
   const t = el('text', { x: 8, y: 172 - H + 8, 'font-family': 'IM Fell English SC, Georgia, serif', 'font-size': 10, fill: '#3b2c1c', 'letter-spacing': 1 }, gLeg); t.textContent = 'Legend';
@@ -1430,7 +1569,7 @@ function renderLegend() {
 
 
 /* markers: one group per province (and per port), drawn at a fixed screen size */
-const markers = [];
+const markers = [], fleetMarks = [];
 function markerGroup(x, y) { const g = el('g', { class: 'mk' }, $('g-mk')); markers.push({ g, x, y }); return g; }
 const mkProv = {}, mkPort = {};
 D.provinces.forEach(p => { mkProv[p.id] = markerGroup(p.label[0], p.label[1]); });
@@ -1438,7 +1577,10 @@ D.ports.forEach(p => { mkPort[p.province] = markerGroup(p.xy[0], p.xy[1]); });
 
 /* pan / zoom */
 let vb = { x: 0, y: 0, w: D.W, h: D.H }, cv = { ...vb }, commitTimer = 0, kk = 1;
-const rect = () => stage.getBoundingClientRect();
+let rectCache = null;   // reading the stage size forces the browser to lay out the page, so it is measured once per resize
+const rect = () => rectCache || (rectCache = stage.getBoundingClientRect());
+new ResizeObserver(() => { rectCache = null; }).observe(stage);
+window.addEventListener('scroll', () => { rectCache = null; }, true);
 function fitAll() {
   const r = rect(), side = r.width > 760 ? 110 : 10, bottom = r.width > 760 ? 150 : 120;
   const s = Math.min((r.width - 2 * side) / D.W, (r.height - 12 - bottom) / D.H) || 1;
@@ -1459,6 +1601,7 @@ function clampVb() {
 }
 function commit() {
   clearTimeout(commitTimer); cv = { ...vb }; svg.style.transform = '';
+  if (!zoomRaf && !zoomDebt) svg.classList.remove('zooming');
   svg.setAttribute('viewBox', `${vb.x - PAD * vb.w} ${vb.y - PAD * vb.h} ${vb.w * (1 + 2 * PAD)} ${vb.h * (1 + 2 * PAD)}`);
   kk = rect().width / vb.w;
   svg.style.setProperty('--u', (1 / kk).toFixed(4));
@@ -1466,13 +1609,16 @@ function commit() {
   const hit = (a, b) => a.x < b.x + b.width + pad && b.x < a.x + a.width + pad && a.y < b.y + b.height + pad && b.y < a.y + a.height + pad;
   [...labels].sort((a, b) => a.prio - b.prio).forEach(L => {
     L.t.style.display = '';
-    L.t.setAttribute('font-size', (L.base * shrink / kk).toFixed(2));
-    const bb = L.t.getBBox();
+    const fs = L.base * shrink / kk;
+    L.t.setAttribute('font-size', fs.toFixed(2));
+    if (!L.bb0) { L.t.setAttribute('font-size', L.base); const b0 = L.t.getBBox(); L.bb0 = { x: b0.x - L.xy[0], y: b0.y - L.xy[1], w: b0.width, h: b0.height }; L.t.setAttribute('font-size', fs.toFixed(2)); }   // text scales linearly with its font size
+    const k = fs / L.base, bb = { x: L.xy[0] + L.bb0.x * k, y: L.xy[1] + L.bb0.y * k, width: L.bb0.w * k, height: L.bb0.h * k };
     if (placed.some(p => hit(bb, p))) { L.t.style.display = 'none'; return; }
     placed.push(bb);
   });
   const sc = 1 / Math.max(kk, .55);
   markers.forEach(m => m.g.setAttribute('transform', `translate(${m.x},${m.y}) scale(${sc.toFixed(3)})`));
+  fleetMarks.forEach(m => m.g.setAttribute('transform', `translate(${m.x},${m.y}) scale(${sc.toFixed(3)})`));
 }
 const PAD = .3;   // the map is drawn 30% wider on each side than what you see
 function preview() {
@@ -1503,7 +1649,7 @@ function zoomStep() {
   zoomAt(Math.exp(take), zoomAt0[0], zoomAt0[1]);
   zoomDebt = vb.w === w0 ? 0 : zoomDebt - take;   // hit the zoom limit: forget the rest
   const s = cv.w / vb.w;
-  if (s < .45 || s > 3.5) commit();
+  if (s < .3 || s > 6) commit();   // only redraw mid-glide when the stretched picture would look really wrong
   clearTimeout(commitTimer);
   if (Math.abs(zoomDebt) > 1e-4) zoomRaf = requestAnimationFrame(zoomStep);
   else { zoomDebt = 0; commitTimer = setTimeout(commit, 120); }
@@ -1512,6 +1658,7 @@ svg.addEventListener('wheel', e => {
   e.preventDefault();
   const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
   zoomDebt = Math.max(-2.5, Math.min(2.5, zoomDebt - dy * .0018)); zoomAt0 = [e.clientX, e.clientY];
+  svg.classList.add('zooming');   // labels and markers are the slow part to redraw: hide them for the glide
   if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
 }, { passive: false });
 let drag = null, moved = false; const pts = new Map();
@@ -1525,11 +1672,12 @@ window.addEventListener('pointermove', e => {
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   if (!moved && Math.abs(dx) + Math.abs(dy) > 4) { moved = true; svg.classList.add('dragging'); }
   if (!moved) return;
-  const s = vb.w / rect().width; vb.x = drag.vx - dx * s; vb.y = drag.vy - dy * s; clampVb(); frame(preview);
+  const s = vb.w / rect().width; vb.x = drag.vx - dx * s; vb.y = drag.vy - dy * s; clampVb(); frame(() => { if (pastMargin()) commit(); else preview(); });
 });
-function endPointer(e) { pts.delete(e.pointerId); if (!pts.size) { if (moved) commit(); drag = null; svg.classList.remove('dragging'); setTimeout(() => moved = false, 0); } }
+const pastMargin = () => Math.abs(vb.x - cv.x) > PAD * cv.w * .8 || Math.abs(vb.y - cv.y) > PAD * cv.h * .8 || Math.abs(vb.w - cv.w) > 1e-6;
+function endPointer(e) { pts.delete(e.pointerId); if (!pts.size) { if (moved && pastMargin()) commit(); drag = null; svg.classList.remove('dragging'); setTimeout(() => moved = false, 0); } }
 window.addEventListener('pointerup', endPointer); window.addEventListener('pointercancel', endPointer);
-window.addEventListener('resize', () => { fitAll(); layoutHand(); });
+window.addEventListener('resize', () => { rectCache = null; fitAll(); layoutHand(); });
 
 /* ---------- card art ---------- */
 const ART = {
@@ -1541,6 +1689,7 @@ const ART = {
   destroy: '<path d="M38 56V10" stroke="#3b2c1c" stroke-width="3"/><path d="M38 12h26l-6 8 6 8H38" fill="#6f9447" stroke="#3b2c1c" stroke-width="2"/><path d="M30 16l40 36M70 16L30 52" stroke="#8c3b2c" stroke-width="6" stroke-linecap="round"/>',
   mission: '<rect x="22" y="16" width="56" height="36" rx="2" fill="#f6eedb" stroke="#3b2c1c" stroke-width="2.5"/><path d="M22 18l28 20 28-20" fill="none" stroke="#3b2c1c" stroke-width="2.5"/><circle cx="50" cy="40" r="7" fill="#8c3b2c"/>',
   repair: '<circle cx="50" cy="14" r="5" fill="none" stroke="#3b2c1c" stroke-width="3"/><path d="M50 19v34M38 28h24M28 40c2 10 12 14 22 14s20-4 22-14" fill="none" stroke="#3b2c1c" stroke-width="4" stroke-linecap="round"/>',
+  iprop: '<path d="M30 30l30-16v36L30 34z" fill="#efe3c6" stroke="#3b2c1c" stroke-width="2.5"/><rect x="20" y="26" width="11" height="12" fill="#efe3c6" stroke="#3b2c1c" stroke-width="2.5"/><path d="M68 22l8-4M70 32h9M68 42l8 4" stroke="#8a5216" stroke-width="3" stroke-linecap="round"/>',
   propaganda: '<path d="M30 30l30-16v36L30 34z" fill="#efe3c6" stroke="#3b2c1c" stroke-width="2.5"/><rect x="20" y="26" width="11" height="12" fill="#efe3c6" stroke="#3b2c1c" stroke-width="2.5"/><path d="M68 22l8-4M70 32h9M68 42l8 4" stroke="#3f5e2c" stroke-width="3" stroke-linecap="round"/>',
   raid: '<path d="M50 10c8 10 14 16 14 26a14 14 0 0 1-28 0c0-6 4-10 6-14 2 6 6 8 8 8 0-8-2-14 0-20z" fill="#d9844a" stroke="#3b2c1c" stroke-width="2.5"/><path d="M50 50v8" stroke="#3b2c1c" stroke-width="4"/>',
   ssab: '<circle cx="46" cy="38" r="16" fill="#3b2c1c"/><path d="M56 26q6-10 14-8" fill="none" stroke="#3b2c1c" stroke-width="3"/><path d="M70 14l4-4M72 20l6 0M66 10l0-5" stroke="#d24a2a" stroke-width="3" stroke-linecap="round"/>',
@@ -1587,7 +1736,7 @@ const mine = f => isBot(f) ? false : mode === 'local' ? true : !!(S && S.seats[f
 function nextHuman(from) { let f = from; for (let i = 0; i < 3; i++) { if (!isBot(f)) return f; f = F[(F.indexOf(f) + 1) % 3]; } return from; }
 const atWar = () => !!(S && S.phase === 'war');
 const myTurn = () => S && (S.phase === 'play' || S.phase === 'war') && viewF === S.active && mine(S.active) && passTo === null;
-let src = null, skipWarn = false, uprisingShow = null, sendN = null;   // sendN: troops to send (null = all that can go)
+let src = null, skipWarn = false, uprisingShow = null, sendN = null, srcFleet = null, launchMode = false;   // srcFleet: selected fleet id; launchMode: choosing a port to launch from   // sendN: troops to send (null = all that can go)
 const knowsSecret = () => viewF === 'sep' && mine('sep') && secret !== null;
 /* Only the separatists see true loyalty. Everyone else sees what their last search showed (or nothing). */
 const seesLoy = () => viewF === 'sep' && mine('sep') && passTo === null;
@@ -1612,9 +1761,14 @@ function renderHint() {
     if (w.reinf[viewF] > 0) msg = `Place ${w.reinf[viewF]} reinforcement${w.reinf[viewF] === 1 ? '' : 's'}: click your provinces.`;
     else if (src) {
       const b = w.beach[src] && w.beach[src].f === viewF;
-      msg = b ? `Beachhead in ${PROV[src].name} (${w.beach[src].n} troops): click it to attack${w.beach[src].fresh ? ', −2 this turn' : ''}.` : `Army in ${PROV[src].name} (${w.troops[src]} troops): gold to march, red to attack, dashed by sea (2 points).`;
+      msg = b ? `Beachhead in ${PROV[src].name} (${w.beach[src].n} troops): click it to attack${w.beach[src].fresh ? ', −2 this turn' : ''}, or click a fleet offshore to re-embark.` : `Army in ${PROV[src].name} (${w.troops[src]} troops): gold to march, red to attack, or click a glowing fleet to board it (free).`;
       cancel = true;
-    } else msg = 'Click one of your provinces with troops to command its army.';
+    } else if (launchMode) { msg = 'Choose a port to launch the fleet from.'; cancel = true; }
+    else if (srcFleet) {
+      const x = (w.fleets || []).find(y => y.id === srcFleet);
+      msg = !x ? '' : x.moved ? 'This fleet has sailed this turn. Select an army next to it to board (free).' : x.n ? `Fleet with ${x.n} troops: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or a highlighted coast to sail and land (${E.WAR.LAND_COST} pts).` : `Empty fleet: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or one of your coastal provinces next to it to load troops (free).`;
+      cancel = true;
+    } else msg = 'Click one of your provinces with troops to command its army, or a ship to command a fleet.';
   }
   if (!msg && sel >= 0 && S && myTurn()) {
     const card = S.hands[viewF][sel], c = E.CARDS[card];
@@ -1625,7 +1779,7 @@ function renderHint() {
   H.hidden = !msg; if (!msg) return;
   H.className = 'hint' + (err ? ' err' : '');
   H.textContent = msg;
-  if (cancel) { const b = h('button', null, 'Cancel'); b.type = 'button'; b.onclick = () => { sel = -1; src = null; render(); }; H.append(b); }
+  if (cancel) { const b = h('button', null, 'Cancel'); b.type = 'button'; b.onclick = () => { sel = -1; src = null; srcFleet = null; launchMode = false; render(); }; H.append(b); }
 }
 
 /* ---------- rendering ---------- */
@@ -1653,11 +1807,11 @@ function renderTop() {
     let label = SHORT[f];
     c.title = FN[f];
     if (isBot(f)) label += ' · bot';
-    else if (mode === 'online') { const seat = S.seats[f]; label += seat ? ` · ${seat.key === net.key ? 'you' : (net.names[seat.uid] || 'Friend')}` : ' · open'; if (seat && net.online.has(seat.key)) c.append(h('span', 'on-line')); }
+    else if (mode === 'online') { const seat = S.seats[f]; label += seat ? ` · ${seat.key === net.key ? 'you' : (seatName(seat) || 'Friend')}` : ' · open'; if (seat && net.online.has(seat.key)) c.append(h('span', 'on-line')); }
     else if (viewF === f) label += ' (you)';
-    c.append(h('span', null, S.war ? `${label} · ${E.army(S, f)}${f !== 'imp' || S.war.dutchIn ? '/' + E.supply(S, f) : ''} troops · ${(S.war.score || {})[f] || 0} pts` : `${label} · ${S.hands[f].length} cards`));
+    c.append(h('span', null, S.war ? `${label} · ${E.army(S, f)}${f !== 'imp' || S.war.dutchIn ? '/' + E.supply(S, f) : ''} · ${(S.war.score || {})[f] || 0} pts` : `${label} · ${S.hands[f].length} cards`));
     if (S.war && S.war.out && S.war.out[f]) c.classList.add('out');
-    if (S.war) c.title = `${FN[f]}: ${E.army(S, f)} troops${f !== 'imp' || S.war.dutchIn ? `, supply limit ${E.supply(S, f)}` : ''}`;
+    if (S.war) c.title = `${FN[f]}: ${E.army(S, f)} troops${f !== 'imp' || S.war.dutchIn ? `, supply limit ${E.supply(S, f)}` : ''}, ${(S.war.score || {})[f] || 0} points`;
     R.append(c);
   });
   if (mode === 'online') {
@@ -1670,7 +1824,8 @@ function renderTop() {
 function renderMap() {
   renderLegend();
   if (S && S.war) { renderWarMap(); return; }
-  D.provinces.forEach(p => frontEl[p.id].textContent = '');
+  D.provinces.forEach(p => { frontEl[p.id].textContent = ''; delete frontKey[p.id]; });
+  drawFleets();
   if (!S) { D.provinces.forEach(p => provEl[p.id].setAttribute('class', 'prov ' + p.owner)); D.provinces.forEach(p => mkProv[p.id].textContent = ''); D.ports.forEach(p => drawPort(p.province, false)); return; }
   let valid = null;
   if (S.phase === 'setup' && viewF === 'sep' && mine('sep') && passTo === null) valid = new Set(E.hideoutChoices(S));
@@ -1683,13 +1838,15 @@ function renderMap() {
     if (p.owner === 'gov') cls += st.outpost ? ' op' : sl && sl.loy ? ' l' + sl.loy : '';
     if (valid && valid.has(p.id)) cls += ' valid';
     if (infoId === p.id) cls += ' pick';
-    provEl[p.id].setAttribute('class', cls);
+    if (provEl[p.id].getAttribute('class') !== cls) provEl[p.id].setAttribute('class', cls);
     drawProvMarks(p.id, st);
   });
   D.ports.forEach(p => drawPort(p.province, S.ports[p.province] && S.ports[p.province].broken));
 }
 function drawProvMarks(id, st) {
-  const g = mkProv[id]; g.textContent = '';
+  const g = mkProv[id];
+  const key = 'p' + JSON.stringify([shownLoy(id), st.fort, st.outpost, st.searched, viewF === 'sep' && mine('sep') && secret === id && passTo === null]);
+  if (markKey[id] === key) return; markKey[id] = key; g.textContent = '';
   if (PROV[id].owner !== 'gov') return;
   const showHide = viewF === 'sep' && mine('sep') && secret === id && passTo === null;
   const items = [], sl = shownLoy(id), lv = sl ? sl.loy : 0;
@@ -1743,6 +1900,13 @@ function renderWarMap() {
       const a = E.warActions(S, src); valid = new Set([src]);
       a.move.forEach(id => { valid.add(id); kind[id] = 'mv'; }); a.sea.forEach(id => { valid.add(id); kind[id] = 'sea'; });
       a.attack.forEach(id => { valid.add(id); kind[id] = 'atk'; }); a.land.forEach(id => { valid.add(id); kind[id] = 'land'; });
+    } else if (launchMode) { valid = new Set(E.launchPorts(S, viewF)); }
+    else if (srcFleet) {
+      const x = (w.fleets || []).find(y => y.id === srcFleet); valid = new Set();
+      if (x) {
+        E.landTargets(S, x).forEach(id => { valid.add(id); kind[id] = w.owner[id] === viewF ? 'mv' : 'land'; });
+        if (!x.n) E.held(S, viewF).filter(id => (PROV[id].seas || []).includes(x.zone) && w.troops[id] > 0).forEach(id => { valid.add(id); kind[id] = 'mv'; });
+      }
     } else if (w.reinf[viewF] > 0) { valid = new Set(E.held(S, viewF)); }
   }
   svg.classList.toggle('targeting', !!valid);
@@ -1752,14 +1916,22 @@ function renderWarMap() {
     if (valid && valid.has(p.id)) cls += ' valid ' + (kind[p.id] || '');
     if (src === p.id) cls += ' srcsel';
     if (infoId === p.id) cls += ' pick';
-    provEl[p.id].setAttribute('class', cls);
+    if (provEl[p.id].getAttribute('class') !== cls) provEl[p.id].setAttribute('class', cls);
     drawFront(p.id, enc);
     drawWarMarks(p.id);
   });
   D.ports.forEach(p => drawPort(p.province, S.ports[p.province].broken, !!w.blockade[p.province]));
+  Object.keys(S.ports).filter(id => !PORT[id]).forEach(id => { if (!mkPort[id]) { const [x, y] = cityXY(id); mkPort[id] = markerGroup(x, y + 5); commit(); } drawPort(id, S.ports[id].broken, !!w.blockade[id]); });
+  // sailing: highlight the sea zones the selected fleet can reach
+  const fl = srcFleet && (w.fleets || []).find(x => x.id === srcFleet), sz = new Set(fl && myTurn() ? E.sailZones(S, fl) : []);
+  D.seas.forEach(z => seaEl[z.id].classList.toggle('valid', sz.has(z.id)));
+  drawFleets();
 }
+const markKey = {};   // what each province's markers last showed: redraw only when it changes
 function drawWarMarks(id) {
-  const g = mkProv[id], w = S.war, o = w.owner[id]; g.textContent = '';
+  const g = mkProv[id], w = S.war, o = w.owner[id];
+  const key = 'w' + JSON.stringify([o, w.troops[id], w.control[id], S.prov[id].fort, S.prov[id].outpost, w.beach[id] || 0]);
+  if (markKey[id] === key) return; markKey[id] = key; g.textContent = '';
   const y = 14;
   const tc = el('g', { transform: `translate(0,${y})` }, g);
   el('circle', { r: 10, fill: INK[o], stroke: '#f4ead0', 'stroke-width': 2 }, tc);
@@ -1783,9 +1955,50 @@ function drawWarMarks(id) {
     el('title', {}, b).textContent = `${FN[bh.f]} beachhead: ${bh.n} troops${bh.fresh ? ' (just landed, −2)' : ''}`;
   }
 }
+/* fleets: a ship marker in its sea zone, with the number of troops aboard */
+const gFleet = el('g', { id: 'g-fleet' }); $('g-mk').parentNode.insertBefore(gFleet, $('g-mk').nextSibling);
+let fleetKey = '';
+function drawFleets() {
+  const key = JSON.stringify([S && S.war && S.war.fleets, srcFleet, src, viewF, S && S.active, kk]);
+  if (key === fleetKey) return; fleetKey = key;
+  gFleet.textContent = ''; fleetMarks.length = 0;
+  if (!S || !S.war) return;
+  const w = S.war, byZone = {}, sc = 1 / Math.max(kk, .55);
+  (w.fleets || []).forEach(x => (byZone[x.zone] = byZone[x.zone] || []).push(x));
+  Object.entries(byZone).forEach(([z, list]) => {
+    const zone = D.seas.find(q => q.id === z); if (!zone) return;
+    list.forEach((x, i) => {
+      const px = zone.label[0] + (i - (list.length - 1) / 2) * 30, py = zone.label[1] - 24;   // just above the sea's name
+      const g = el('g', { class: 'fleet' + (x.id === srcFleet ? ' sel' : '') + (src && myTurn() && x.f === viewF && E.embarkMax(S, src, x) > 0 ? ' board' : ''), transform: `translate(${px},${py}) scale(${sc.toFixed(3)})` }, gFleet);
+      fleetMarks.push({ g, x: px, y: py });
+      el('ellipse', { cx: 0, cy: 7, rx: 15, ry: 3, fill: 'rgba(40,25,10,.25)' }, g);
+      el('path', { d: 'M-14 1h28l-5 7h-18z', fill: INK[x.f], stroke: '#f4ead0', 'stroke-width': 1.3 }, g);
+      el('path', { d: 'M-2 1V-15M-2 -14l10 12H-2z', fill: '#f4ead0', stroke: INK[x.f], 'stroke-width': 1.2 }, g);
+      if (x.n) { el('circle', { cx: -10, cy: -6, r: 7, fill: INK[x.f], stroke: '#f4ead0', 'stroke-width': 1.3 }, g); const t = el('text', { x: -10, y: -2.5, 'text-anchor': 'middle', 'font-size': 10, 'font-weight': 500, fill: '#f6eedb', 'font-family': 'Spectral, Georgia, serif' }, g); t.textContent = x.n; }
+      if (x.moved && x.f === S.active) el('circle', { cx: 12, cy: -10, r: 3, fill: '#9a8a70' }, g);
+      el('title', {}, g).textContent = `${FN[x.f]} fleet in the ${zone.name}: ${x.n} troop${x.n === 1 ? '' : 's'} aboard${x.moved ? ' (has sailed this turn)' : ''}`;
+      g.addEventListener('click', e => { e.stopPropagation(); if (!moved) onFleet(x.id); });
+    });
+  });
+}
+function onFleet(id) {
+  const w = S.war, x = (w.fleets || []).find(y => y.id === id); if (!x) return;
+  if (!myTurn() || x.f !== viewF) { hint(`${FN[x.f]} fleet: ${x.n} troops aboard.`); return; }
+  if (src) {   // an army is selected: board this fleet (free)
+    const s0 = src, n = sendN; src = null; sendN = null;
+    act(() => E.embark(S, s0, id, n)); return;
+  }
+  srcFleet = srcFleet === id ? null : id; launchMode = false; sel = -1; infoId = null; render();
+}
+function onSeaZone(z) {
+  if (!srcFleet || !myTurn()) return;
+  const f0 = srcFleet; act(() => E.sail(S, f0, z));
+}
+const portKey = {};
 function drawPort(pid, broken, blockaded = false) {
-  const g = mkPort[pid]; g.textContent = '';
-  const cap = PORT[pid].capital;
+  const g = mkPort[pid];
+  if (portKey[pid] === '' + broken + blockaded) return; portKey[pid] = '' + broken + blockaded; g.textContent = '';
+  const cap = PORT[pid] && PORT[pid].capital;
   if (cap) {
     el('circle', { r: 6.2, fill: '#f4ead0', stroke: '#3b2c1c', 'stroke-width': 1.1 }, g);
     el('path', { d: 'M0 -4.3 L1.25 -1.3 L4.4 -1.15 L2 .95 L2.75 4.1 L0 2.35 L-2.75 4.1 L-2 .95 L-4.4 -1.15 L-1.25 -1.3 Z', fill: '#7a2e1d' }, g);
@@ -1795,7 +2008,7 @@ function drawPort(pid, broken, blockaded = false) {
   }
   if (broken) el('path', { d: 'M-6 -6l12 12M6 -6l-12 12', stroke: '#b5463c', 'stroke-width': 2.6, 'stroke-linecap': 'round' }, g);
   if (blockaded) el('circle', { r: 9, fill: 'none', stroke: '#d88c3e', 'stroke-width': 2.4, 'stroke-dasharray': '3 2' }, g);
-  el('title', {}, g).textContent = `${PORT[pid].name} port${broken ? ' (wrecked)' : ''}${blockaded ? ' (blockaded by the Dutch)' : ''}`;
+  el('title', {}, g).textContent = `${PORT[pid] ? PORT[pid].name : PROV[pid].name + ' harbour'} port${broken ? ' (wrecked)' : ''}${blockaded ? ' (blockaded by the Dutch)' : ''}`;
 }
 
 let handCards = [];
@@ -1905,7 +2118,7 @@ function renderControls() {
 function renderWarControls(C) {
   const w = S.war;
   C.append(h('h4', null, myTurn() ? `${FN[viewF]} · round ${w.round} of ${E.WAR.ROUNDS}` : `Round ${w.round} of ${E.WAR.ROUNDS}`));
-  C.append(h('div', 'waiting', `Scores: ${F.map(f => `${SHORT[f]} ${(w.score || {})[f] || 0} (+${E.roundPoints(S, f)} this round)`).join(' · ')}`));
+  C.append(h('div', 'waiting', `Points: ${F.map(f => `${SHORT[f]} ${(w.score || {})[f] || 0} (+${E.roundPoints(S, f)})`).join(' · ')}`));
   if (viewF && mine(viewF) && (viewF !== 'imp' || S.war.dutchIn)) C.append(h('div', 'waiting', `Your army: ${E.army(S, viewF)} troops · supply limit ${E.supply(S, viewF)}`));
   if (!myTurn()) { C.append(h('div', 'waiting', `Waiting for the ${FN[S.active]}${isBot(S.active) ? ' (bot)' : ''}…`)); return; }
   const pts = h('div', 'points'); pts.append(h('span', null, 'Points'));
@@ -1928,6 +2141,9 @@ function renderWarControls(C) {
     row.append(button('Discard (1 pt)', 'ghost', () => act(() => E.discard(S, sel))));
     C.append(row);
   }
+  const nf = E.fleetsOf(S, viewF).length, cap = E.fleetCap(S, viewF);
+  C.append(h('div', 'waiting', `Fleets: ${nf} of ${cap} (one per port)`));
+  if (E.canLaunch(S, viewF) && E.launchPorts(S, viewF).length) C.append(button(launchMode ? 'Cancel launch' : `Launch a fleet (${E.WAR.LAUNCH_COST} pt)`, 'ghost', () => { launchMode = !launchMode; srcFleet = null; src = null; sel = -1; render(); }));
   C.append(button('End turn', '', () => {
     if (w.reinf[viewF] > 0 && !skipWarn) { skipWarn = true; hint(`You still have ${w.reinf[viewF]} troops to place. Press End turn again to give them up.`, true); return; }
     skipWarn = false; src = null; act(() => E.warEndTurn(S), true);
@@ -1963,6 +2179,13 @@ function renderInfo() {
 /* ---------- overlays ---------- */
 let showMenu = false, confirmNew = false, overlayErr = '', hideOver = false, practiceMode = 'gov', practiceStart = 'start';
 function renderOverlay() {
+  // keep typing intact when the panel is rebuilt by someone else's move
+  const ae = document.activeElement, keepId = ae && (ae.id === 'myname' || ae.id === 'roomcode') ? ae.id : null;
+  const keep = keepId && { v: ae.value, a: ae.selectionStart, b: ae.selectionEnd };
+  renderOverlayInner();
+  if (keepId && $(keepId)) { const e = $(keepId); e.value = keep.v; e.focus(); try { e.setSelectionRange(keep.a, keep.b); } catch (x) {} }
+}
+function renderOverlayInner() {
   const O = $('overlay'); O.textContent = '';
   let panel = null;
   if (mode === 'lobby' || showMenu) panel = lobbyPanel();
@@ -2001,7 +2224,7 @@ function lobbyPanel() {
   if (mode === 'local' && S && showMenu) r1.append(button('Back to the game', 'ghost', () => { showMenu = false; render(); }));
   P.append(r1);
 
-  P.append(h('p', 'soft', 'Version 4 Nov 2026, 20:21 (points war)'));
+  P.append(h('p', 'soft', 'Version 4 Nov 2026, 21:12 (checked and smoother)'));
   const cr = Soundtrack.credits;
   if (cr.length) {
     const d = h('details'); const sm = h('summary', null, `Music credits (${cr.length})`); sm.style.cursor = 'pointer'; d.append(sm);
@@ -2011,7 +2234,7 @@ function lobbyPanel() {
   }
   P.append(h('h3', null, 'Play online'));
   if (!net.db) { P.append(h('p', 'soft', net.ready ? 'Online play isn’t set up here. On claude.ai, ask the owner to share the page with you as an Editor. On your own website, fill in config.js (see the guide).' : 'Connecting…')); return P; }
-  P.append(h('p', 'soft', 'Each friend opens this page on their own computer, enters the same room code and takes a seat. The Imperialists can be a bot.'));
+  P.append(h('p', 'soft', 'Each friend opens this page on their own computer and joins the same room. Type your name and pick a side, or Random. Anyone can then press Start the game.'));
   const rr = h('div', 'row'); rr.style.alignItems = 'center';
   rr.append(h('span', null, 'Room: ')); const rb = h('b', null, roomId); rr.append(rb);
   const inp = document.createElement('input'); inp.id = 'roomcode'; inp.placeholder = 'room code'; inp.setAttribute('aria-label', 'Room code');
@@ -2019,24 +2242,58 @@ function lobbyPanel() {
   rr.append(inp, button('Join', 'ghost small', () => { const c = cleanRoom(inp.value); if (!c) { overlayErr = 'Type a room code: letters, numbers and dashes.'; renderOverlay(); return; } try { location.hash = c; } catch (e) {} joinRoom(c); }));
   rr.append(button('New private room', 'ghost small', () => { const c = 'r-' + Math.random().toString(36).slice(2, 8); try { location.hash = c; } catch (e) {} joinRoom(c); }));
   P.append(rr);
-  const seats = h('div', 'seats');
   const G = onlineState;
-  F.forEach(f => {
-    const s = h('div', 'seat'); const dot = h('span', 'dot'); dot.style.background = `var(--${f})`;
-    const who = h('div'); who.append(document.createTextNode(FN[f]));
-    const seat = G && G.seats[f];
-    const sm = h('small', null, !G ? 'No game yet' : seat && seat.bot ? 'Played by a bot' : seat ? (seat.key === net.key ? 'You' : (net.names[seat.uid] || 'A friend')) + (net.online.has(seat.key) ? ' · online' : '') : 'Open seat');
-    who.append(sm);
-    s.append(dot, who);
-    if (G && G.phase !== 'over') {
-      if (!seat) { const r = h('div', 'row'); r.append(button('Take seat', 'small', () => takeSeat(f))); if (f === 'imp') r.append(button('Use a bot', 'ghost small', () => takeSeat(f, true))); s.append(r); }
-      else if (seat.bot) s.append(button('Remove bot', 'ghost small', () => leaveSeat(f)));
-      else if (seat.key === net.key) s.append(button('Leave', 'ghost small', () => leaveSeat(f)));
-      else s.append(h('span'));
-    } else s.append(h('span'));
-    seats.append(s);
-  });
-  P.append(seats);
+  const started = G && (G.started || F.some(f => G.seats[f]));   // older games had seats taken directly
+  if (G && !started) {
+    // 1. your name
+    const nr = h('div', 'row'); nr.style.alignItems = 'center';
+    nr.append(h('span', null, 'Your name: '));
+    const ni = document.createElement('input'); ni.id = 'myname'; ni.maxLength = 20; ni.placeholder = 'e.g. Stanley'; ni.value = myName; ni.setAttribute('aria-label', 'Your name');
+    ni.style.cssText = 'font:inherit;font-size:14px;padding:6px 8px;width:11em;border-radius:5px;border:1px solid #a88c5f;background:var(--paper-2);color:var(--ink)';
+    ni.oninput = () => { myName = ni.value.trim().slice(0, 20); };
+    ni.onchange = () => { myName = ni.value.trim().slice(0, 20); try { localStorage.setItem('nus-name', myName); } catch (e) {} const me = (G.picks || {})[net.key]; if (me && myName) setPick(me.pick); };
+    nr.append(ni); P.append(nr);
+    // 2. who picked what
+    const picks = G.picks || {}, mineP = picks[net.key];
+    const takenBy = f => Object.entries(picks).find(([k, v]) => v.pick === f && k !== net.key);
+    const list = h('div', 'seats');
+    Object.entries(picks).forEach(([k, v]) => {
+      const row = h('div', 'seat'); const dot = h('span', 'dot'); dot.style.background = v.pick === 'random' ? '#9a8a70' : `var(--${v.pick})`;
+      const who = h('div'); who.append(document.createTextNode(v.name || 'Player'), h('small', null, `${v.pick === 'random' ? 'Random faction' : FN[v.pick]}${k === net.key ? ' · you' : ''}${net.online.has(k) ? ' · online' : ''}`));
+      row.append(dot, who, k === net.key ? button('Leave', 'ghost small', () => setPick(null)) : h('span'));
+      list.append(row);
+    });
+    if (G.impBot) { const row = h('div', 'seat'); const dot = h('span', 'dot'); dot.style.background = 'var(--imp)'; const who = h('div'); who.append(document.createTextNode('Bot'), h('small', null, 'Imperialists')); row.append(dot, who, button('Remove bot', 'ghost small', () => setImpBot(false))); list.append(row); }
+    if (!Object.keys(picks).length && !G.impBot) list.append(h('p', 'soft', 'Nobody has picked a side yet.'));
+    P.append(list);
+    // 3. your pick
+    P.append(h('p', 'soft', mineP ? 'Change your pick:' : 'Pick a side (each faction can be taken by one person; Random gets whatever is left):'));
+    const pr = h('div', 'row');
+    [...F, 'random'].forEach(f => {
+      const t = f !== 'random' && (takenBy(f) || (f === 'imp' && G.impBot));
+      const b = button(f === 'random' ? 'Random' : FN[f], mineP && mineP.pick === f ? '' : 'ghost', () => {
+        if (!myName) { overlayErr = 'Type your name first.'; renderOverlay(); return; }
+        if (t) { overlayErr = `${FN[f]} is already taken.`; renderOverlay(); return; }
+        setPick(f);
+      });
+      if (t) { b.setAttribute('aria-disabled', 'true'); b.title = f === 'imp' && G.impBot ? 'Played by a bot' : `Taken by ${takenBy(f)[1].name}`; }
+      pr.append(b);
+    });
+    if (!G.impBot && !takenBy('imp') && !(mineP && mineP.pick === 'imp')) pr.append(button('Dutch bot', 'ghost', () => setImpBot(true)));
+    P.append(pr);
+    if (mineP) P.append(button('Start the game', '', () => startOnlineGame()));
+  } else if (G) {
+    const seats = h('div', 'seats');
+    F.forEach(f => {
+      const s = h('div', 'seat'); const dot = h('span', 'dot'); dot.style.background = `var(--${f})`;
+      const who = h('div'); who.append(document.createTextNode(FN[f]));
+      const seat = G.seats[f];
+      who.append(h('small', null, seat && seat.bot ? 'Played by a bot' : seat ? (seat.key === net.key ? 'You' : (seatName(seat) || 'A friend')) + (net.online.has(seat.key) ? ' · online' : '') : 'Open seat'));
+      s.append(dot, who, h('span'));
+      seats.append(s);
+    });
+    P.append(seats);
+  } else P.append(h('p', 'soft', 'No game in this room yet.'));
   const r2 = h('div', 'row');
   if (G && G.phase !== 'over' && F.some(f => G.seats[f] && G.seats[f].key === net.key)) r2.append(button('Enter the game', '', () => enterOnline()));
   if (!confirmNew) r2.append(button(G ? 'Start a fresh online game' : 'Create an online game', G ? 'ghost' : '', () => { if (G && G.phase !== 'over') { confirmNew = true; renderOverlay(); } else newOnline(); }));
@@ -2120,6 +2377,16 @@ function onWarProvince(id) {
     const card = S.hands[f][sel], c = E.CARDS[card];
     if (c.target) { const t = E.warTargets(S, card); if (!t.includes(id)) { hint(`${c.name} can’t target ${PROV[id].name}.`, true); return; } act(() => E.warPlay(S, sel, id)); return; }
   }
+  if (launchMode) {
+    if (!E.launchPorts(S, f).includes(id)) { hint('Choose one of your working ports (highlighted).', true); return; }
+    launchMode = false; act(() => E.launch(S, id)); return;
+  }
+  if (srcFleet) {
+    const x = (w.fleets || []).find(y => y.id === srcFleet);
+    if (x && E.landTargets(S, x).includes(id)) { const f0 = srcFleet; srcFleet = null; act(() => E.landFleet(S, f0, id)); return; }
+    if (x && !x.n && w.owner[id] === f && (PROV[id].seas || []).includes(x.zone)) { const f0 = srcFleet, n = sendN; sendN = null; act(() => E.embark(S, id, f0, n)); return; }
+    srcFleet = null;
+  }
   if (w.reinf[f] > 0) { if (w.owner[id] !== f) { hint('Place reinforcements in a province you hold.', true); return; } act(() => E.place(S, id)); return; }
   const mineArmy = x => (w.owner[x] === f && w.troops[x] >= 1 + E.WAR.KEEP) || (w.beach[x] && w.beach[x].f === f);
   if (src) {
@@ -2129,11 +2396,11 @@ function onWarProvince(id) {
     if (a.land.includes(id)) { const s0 = src, n = sendN; src = null; sendN = null; act(() => E.land(S, s0, id, n)); return; }
     if (id === src) { src = null; render(); return; }
   }
-  if (mineArmy(id)) { src = id; sendN = null; infoId = null; render(); return; }
+  if (mineArmy(id)) { src = id; sendN = null; srcFleet = null; launchMode = false; infoId = null; render(); return; }
   if (w.owner[id] === f) hint('This province has no troops to command.');
   infoId = infoId === id ? null : id; render();
 }
-window.addEventListener('keydown', e => { if (e.key === 'Escape' && (src || sel >= 0)) { src = null; sel = -1; render(); } });
+window.addEventListener('keydown', e => { if (e.key === 'Escape' && (src || sel >= 0 || srcFleet || launchMode)) { src = null; sel = -1; srcFleet = null; launchMode = false; render(); } });
 
 /* Run a rules action on a copy of the state, then save it. endsTurn: show the pass screen in local mode. */
 async function act(fn, endsTurn = false) {
@@ -2145,6 +2412,8 @@ async function act(fn, endsTurn = false) {
   if (r.error) { S = before; hint(r.error, true); return; }
   if (r.secret) setSecret(r.secret);
   sel = -1;
+  if (S.war && srcFleet && !(S.war.fleets || []).some(x => x.id === srcFleet && x.f === viewF)) srcFleet = null;
+  if (endsTurn) { srcFleet = null; launchMode = false; }
   if (mode === 'local') {
     if (S.pending) E.resolveSearch(S, S.pending.provs, E.answerFor(S, secret));
     if (S.phase === 'invasion') E.invade(S, secret);
@@ -2233,8 +2502,10 @@ async function resolveNames() {
   ids.forEach(id => { const n = ps[id] && ps[id].name; if (n && net.names[id] !== n) { net.names[id] = n; changed = true; } });
   if (changed) { renderTop(); if (!$('overlay').hidden) renderOverlay(); }
 }
+const pageOpened = Date.now();
 function onRemote() {
   resolveNames();
+  if (mode === 'lobby' && onlineState && onlineState.started > pageOpened && F.some(f => onlineState.seats[f] && onlineState.seats[f].key === net.key)) { enterOnline(); return; }
   if (mode !== 'online') { if (mode === 'lobby' || showMenu) renderOverlay(); return; }
   S = onlineState;
   if (!S) { mode = 'lobby'; render(); return; }
@@ -2243,6 +2514,7 @@ function onRemote() {
   if (secret === null && S.phase !== 'setup') loadSecret();
   if (sel >= 0 && !myTurn()) sel = -1;
   if (src && !myTurn()) src = null;
+  if (!myTurn()) { srcFleet = null; launchMode = false; }
   // the separatist's browser answers searches
   if (S.pending && !('answer' in S.pending) && mine('sep') && secret !== null && !answered.has(S.pending.q)) {
     answered.add(S.pending.q);
@@ -2277,6 +2549,45 @@ async function newOnline() {
   const G = E.newGame();
   try { await net.ref.set(G); onlineState = G; secret = null; hideOver = false; renderOverlay(); }
   catch (e) { overlayErr = e && e.code === 'invalid_argument' ? 'You can’t create games here. Ask the owner to share this page with you as an Editor.' : 'Couldn’t create the game. Try again.'; renderOverlay(); }
+}
+let myName = ''; try { myName = localStorage.getItem('nus-name') || ''; } catch (e) {}
+const seatName = seat => seat && (net.names[seat.uid] || seat.name);
+/* lobby picks: { key: { name, pick: 'gov'|'sep'|'imp'|'random', uid } }; null leaves */
+async function setPick(pick) {
+  overlayErr = '';
+  try {
+    const snap = await net.ref.get(); const G = snap.exists ? snap.data() : null; if (!G) return;
+    const picks = { ...(G.picks || {}) };
+    if (pick && pick !== 'random' && Object.entries(picks).some(([k, v]) => v.pick === pick && k !== net.key)) { overlayErr = `${FN[pick]} was just taken.`; onlineState = G; renderOverlay(); return; }
+    if (pick === 'imp' && G.impBot) { overlayErr = 'The Imperialists are played by a bot.'; renderOverlay(); return; }
+    if (pick) picks[net.key] = { name: myName || 'Player', pick, uid: net.myId || null }; else delete picks[net.key];
+    await net.ref.update({ picks });
+  } catch (e) { overlayErr = 'Couldn’t save your pick. Try again.'; renderOverlay(); }
+}
+async function setImpBot(on) {
+  try {
+    const snap = await net.ref.get(); const G = snap.data();
+    if (on && Object.values(G.picks || {}).some(v => v.pick === 'imp')) { overlayErr = 'Someone already picked the Imperialists.'; renderOverlay(); return; }
+    await net.ref.update({ impBot: !!on });
+  } catch (e) { overlayErr = 'Couldn’t change the bot. Try again.'; renderOverlay(); }
+}
+/* turn the picks into seats: fixed picks first, then Random players fill whatever is left */
+async function startOnlineGame() {
+  overlayErr = '';
+  try {
+    const snap = await net.ref.get(); const G = snap.data(); const picks = G.picks || {};
+    const seats = { gov: null, sep: null, imp: G.impBot ? { key: 'bot', uid: null, bot: true } : null };
+    const rnd = [];
+    Object.entries(picks).forEach(([k, v]) => { if (v.pick === 'random') rnd.push([k, v]); else seats[v.pick] = { key: k, uid: v.uid || null, name: v.name }; });
+    // Random players fill the Republic and the rebels before the Dutch (the Dutch can be a bot)
+    const free = F.filter(f => !seats[f]).sort(() => Math.random() - .5).sort((x, y) => (x === 'imp') - (y === 'imp'));
+    if (rnd.length > free.length) { overlayErr = 'More players than free factions. Someone has to leave or pick differently.'; renderOverlay(); return; }
+    const fill = free.slice(0, rnd.length).sort(() => Math.random() - .5);   // which of the open seats is still random
+    rnd.forEach(([k, v], i) => { seats[fill[i]] = { key: k, uid: v.uid || null, name: v.name }; });
+    const empty = F.filter(f => !seats[f]);
+    if (empty.length) { overlayErr = `Nobody is playing the ${empty.map(f => FN[f]).join(' and the ')}. Wait for more friends${empty.includes('imp') && empty.length === 1 ? ', or add the Dutch bot' : ''}.`; renderOverlay(); return; }
+    await net.ref.update({ seats, started: Date.now() });
+  } catch (e) { overlayErr = 'Couldn’t start the game. Try again.'; renderOverlay(); }
 }
 async function takeSeat(f, bot = false) {
   overlayErr = '';
@@ -2337,6 +2648,7 @@ const Music = (() => {
   /* one short cue per card; `land` sounds play when the card reaches the map */
   const SFX = {
     whoosh: t => noise(t, .28, .22, 1400, .7),
+    discard: t => { noise(t, .22, .12, 2600, .9); noise(t + .09, .16, .18, 900, .6); },   // a card tossed onto the pile
     search: t => { ping(t, 1250, .35, 1.2); ping(t + .38, 1250, .14, 1); },
     sweep: t => { ping(t, 1100, .35, 1.2); ping(t + .2, 1250, .25, 1.1); ping(t + .4, 1400, .2, 1); },
     crackdown: t => { noise(t, .55, .2, 1800, .8); drum(t, .7); drum(t + .16, .5); },
@@ -2347,6 +2659,7 @@ const Music = (() => {
     mission: t => { metal(t, 880, .4, 1.8); metal(t + .14, 1320, .3, 1.6); },
     repair: t => { metal(t, 1500, .25, .4); metal(t + .2, 1500, .25, .4); },
     propaganda: t => { brass(t, st(19), .22, .18); brass(t + .18, st(24), .22, .32); },
+    iprop: t => { brass(t, st(19), .22, .18); brass(t + .18, st(24), .22, .32); },
     raid: t => { [0, .09, .18, .27].forEach((d, i) => drum(t + d, .45 + i * .12, 150, 60)); },
     outpost: t => { brass(t, st(19), .2, .14); brass(t + .15, st(23), .2, .14); brass(t + .3, st(26), .24, .5); drum(t + .3, .6, 120, 45); },
     relocate: t => { [0, .22, .44].forEach(d => noise(t + d, .32, .08, 420, 2)); },
@@ -2468,7 +2781,7 @@ $('sfxbtn').addEventListener('click', () => { Music.toggleSounds(); renderMusic(
 
 /* ---------- card effects: the played card flies to its target, then a ripple, a label and a sound ---------- */
 const FX_TEXT = { search: 'Searching…', sweep: 'Sweeping…', crackdown: 'Crackdown · diplomacy −1', fort: 'Fort built', destroy: 'Outpost destroyed',
-  mission: 'Diplomacy +1', repair: 'Port repaired', propaganda: 'Unrest +1', raid: 'Unrest +2', ssab: 'Sabotage!', isab: 'Dutch sabotage!',
+  mission: 'Diplomacy +1', repair: 'Port repaired', propaganda: 'Unrest +1', iprop: 'Unrest +1', raid: 'Unrest +2', ssab: 'Sabotage!', isab: 'Dutch sabotage!',
   outpost: 'Outpost established', relocate: 'The hideout moves', supplies: '+2 points', smear: 'Diplomacy −1', arms: 'Arms for the rebels', spy: 'Plans stolen',
   w_reinforce: '+3 troops', w_recruit: '+3 troops', w_air: 'Aircraft ready', w_fort: 'Fortified', w_mission: 'Diplomacy +1', w_transport: 'Ships ready',
   w_entrench: 'Dug in (+2)', w_outpost: 'New outpost', w_hitrun: 'Guerrillas ready', w_agitate: 'Control −1', w_blockade: 'Port blockaded', w_legion: 'Foreign legion', w_massed: 'Massed assault' };
@@ -2504,11 +2817,18 @@ function warBanner(trigger, list) {
   b.animate([{ marginLeft: '0px' }, { marginLeft: '-7px' }, { marginLeft: '6px' }, { marginLeft: '-3px' }, { marginLeft: '0px' }], { duration: 320, delay: 380 });
   a.onfinish = () => { b.remove(); done(); };
 }
-/* outline a province with a pulsing ring, to show where something happened */
+/* outline a province with a pulsing ring, to show where something happened.
+   It is drawn on its own small layer above the map: fading that layer is cheap, while changing
+   anything inside the big map makes the browser repaint the whole map every frame (that lagged). */
 function highlightProv(id, color, ms) {
-  const p = el('path', { d: PROV[id].d, fill: color, 'fill-opacity': .18, stroke: color, 'stroke-linejoin': 'round', class: 'hl', style: 'stroke-width:calc(var(--u) * 3.5px)' }, $('g-hl'));
-  if (reduceMotion()) { setTimeout(() => p.remove(), ms); return; }
-  p.animate([{ opacity: 0 }, { opacity: 1, offset: .1 }, { opacity: .35, offset: .3 }, { opacity: 1, offset: .5 }, { opacity: .35, offset: .7 }, { opacity: 1, offset: .88 }, { opacity: 0 }], { duration: ms }).onfinish = () => p.remove();
+  const o = document.createElementNS(NS, 'svg');
+  o.setAttribute('viewBox', svg.getAttribute('viewBox'));
+  o.setAttribute('class', 'hl-layer');
+  o.style.transform = svg.style.transform || '';
+  el('path', { d: PROV[id].d, fill: color, 'fill-opacity': .18, stroke: color, 'stroke-linejoin': 'round', 'stroke-width': (3.5 / kk).toFixed(2) }, o);
+  $('fx').append(o);
+  if (reduceMotion()) { setTimeout(() => o.remove(), ms); return; }
+  o.animate([{ opacity: 0 }, { opacity: 1, offset: .1 }, { opacity: .35, offset: .3 }, { opacity: 1, offset: .5 }, { opacity: .35, offset: .7 }, { opacity: 1, offset: .88 }, { opacity: 0 }], { duration: ms }).onfinish = () => o.remove();
 }
 /* a captured city: sparks burst out from it */
 function burstFx(last) {
@@ -2578,6 +2898,8 @@ function playFx(last, own, fly, from, done) {
   if (last.card === 'battle') { battleFx(last, done); return; }
   if (last.card === 'march' || last.card === 'sea' || last.card === 'land') { moveFx(last, done); return; }
   if (last.card === 'uprising') { done(); return; }
+  if (last.card === 'discard') { Music.sfx('discard'); done(); return; }
+  if (last.card === 'fleet' || last.card === 'embark' || last.card === 'sail') { Music.sfx('whoosh'); done(); return; }
   const [tx, ty] = targetPoint(last), r = rect();
   const card = last.card === 'result' ? last.via : last.card;
   if (!fly || !card || reduceMotion()) { landFx(last, tx, ty); done(); return; }
@@ -2631,7 +2953,7 @@ function maybeRunBot() {
       const m = botPlays < 40 ? E.warBot(S) : null;
       if (m) { botPlays++; act(() => E.applyWarBot(S, m)); }
       else { botPlays = 0; act(() => E.warEndTurn(S), true); }
-    }, peek && peek.kind === 'place' ? 350 : fxBusy ? 1900 : 1200);
+    }, peek && peek.kind === 'place' ? 250 : fxBusy ? 600 : 450);
     return;
   }
   botTimer = setTimeout(() => {
@@ -2643,7 +2965,7 @@ function maybeRunBot() {
     if (m && m.declare) { botPlays = 0; act(() => E.declareWar(S), true); }
     else if (m) { botPlays++; act(() => E.play(S, m.idx, m.target, f === 'sep' ? secret : undefined, Math.random, tab)); }
     else { botPlays = 0; act(() => E.endTurn(S), true); }
-  }, fxBusy ? 1900 : 1300);
+  }, fxBusy ? 600 : 650);
 }
 
 /* ---------- boot ---------- */
