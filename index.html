@@ -191,6 +191,7 @@ a.viewbtn { text-decoration: none; }
 .banner .b-sub { font-family: 'IM Fell English', Georgia, serif; font-style: italic; font-size: clamp(15px, 1.8vw, 20px); color: #3b2c1c; margin-top: 6px; }
 .banner.f-sep { color: #3f5e2c; } .banner.f-gov { color: #8c3b2c; } .banner.f-imp { color: #8a5216; }
 .sendrow { display: flex; align-items: center; gap: 8px; margin: 6px 0; font-size: 14px; } .sendrow .btn { padding: 2px 10px; min-width: 32px; } .sendrow b { min-width: 54px; text-align: center; }
+.chip.out { opacity: .45; text-decoration: line-through; }
 .spark { position: absolute; width: 7px; height: 7px; border-radius: 50%; pointer-events: none; box-shadow: 0 0 0 1px #2b2117; }
 .fx { position: absolute; inset: 0; pointer-events: none; z-index: 25; overflow: hidden; }
 .battle { position: absolute; width: 270px; background: rgba(36,27,18,.94); border: 1px solid #c9a24a; border-radius: 8px; padding: 10px 12px; color: #f0e2c0; font-size: 13px; display: grid; gap: 6px; box-shadow: 0 6px 0 rgba(0,0,0,.35); }
@@ -573,13 +574,13 @@ const Engine = (() => {
   /* ================= PHASE 2: CIVIL WAR =================
      Every province has an owner, troops and 3 control points. Attacks are push-and-pull:
      an attacker win takes a control point (at 0 the province falls), a defender win kills an attacking troop. */
-  const WAR = { KEEP: 0, ROUNDS: 30, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
+  const WAR = { KEEP: 0, ROUNDS: 15, PORT_LIFT: 6, PTS_GAIN: 1, PTS_GAIN_DUTCH: 2, PTS_JAKARTA: 4, PTS_OUTPOST: 1, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
   Object.assign(CARDS, {
     w_reinforce: { name: 'Reinforcements', f: 'gov', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
     w_air:       { name: 'Air strike', f: 'gov', cost: 1, target: null, war: true, text: 'Your next attack this turn gets +2.' },
     w_fort:      { name: 'Fortify', f: 'gov', cost: 2, target: 'own', war: true, text: 'Build a fort: +2 when defending.' },
     w_mission:   { name: 'Diplomatic mission', f: 'gov', cost: 2, target: null, war: true, text: 'Diplomacy +1.' },
-    w_transport: { name: 'Naval transport', f: 'gov', cost: 1, target: null, war: true, text: 'Your next sea move or landing this turn is free, carries up to 8 troops and has no beach penalty.' },
+    w_transport: { name: 'Naval transport', f: 'any', cost: 1, target: null, war: true, text: 'Your next sea move or landing this turn is free, carries up to 8 troops and has no beach penalty.' },
     w_recruit:   { name: 'Recruit', f: 'sep', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
     w_massed:    { name: 'Massed assault', f: 'any', cost: 1, target: null, war: true, text: 'Your next attack this turn rolls up to 5 dice.' },
     w_entrench:  { name: 'Entrench', f: 'sep', cost: 1, target: 'own', war: true, text: '+2 when defending this province until your next turn.' },
@@ -591,8 +592,8 @@ const Engine = (() => {
   });
   const WAR_DECKS = {
     gov: { w_reinforce: 5, w_air: 3, w_fort: 2, w_mission: 4, w_transport: 3, w_massed: 3 },
-    sep: { w_recruit: 5, w_entrench: 3, w_outpost: 3, w_hitrun: 3, w_agitate: 3, w_massed: 2 },
-    imp: { w_blockade: 4, smear: 4, arms: 3, w_legion: 4, w_massed: 3 },
+    sep: { w_recruit: 5, w_entrench: 3, w_outpost: 3, w_hitrun: 3, w_agitate: 3, w_massed: 2, w_transport: 2 },
+    imp: { w_blockade: 4, smear: 4, arms: 3, w_legion: 4, w_massed: 3, w_transport: 2 },
   };
 
   /* exact chance that `a` dice + ba beat `b` dice + bb (ties to the defender) */
@@ -705,6 +706,7 @@ const Engine = (() => {
     const first = trigger === 'declare' ? 'sep' : 'gov';   // declaring gives the rebels the first strike
     S.active = first; S.turn = 1; S.pending = null;
     beginTurn(S, first);
+    w.start = Object.fromEntries(FACTIONS.map(f => [f, held(S, f).length])); w.score = { gov: 0, sep: 0, imp: 0 }; w.out = {};
     stamp(S, { f: 'sep', card: 'uprising', target: null, list: w.uprising, trigger, hideout: w.hideout });
   }
   /* Jump straight to the war for testing: a made-up end of the hunt for the chosen road. */
@@ -789,7 +791,8 @@ const Engine = (() => {
     const hop = bySea && portWorks(S, src) && portWorks(S, dst);   // port to port: the whole army, cheaply
     const cost = !bySea ? 1 : w.buff[f].transport ? 0 : hop ? WAR.PORT_HOP : seaCost(S, f);
     if (S.points[f] < cost) return { error: `That costs ${cost} point${cost === 1 ? '' : 's'}.` };
-    const max = !bySea || hop ? w.troops[src] - WAR.KEEP : Math.min(w.buff[f].transport ? WAR.BIG_LIFT : WAR.SEA_LIFT, w.troops[src] - WAR.KEEP);
+    const lift = w.buff[f].transport ? WAR.BIG_LIFT : hop ? WAR.PORT_LIFT : WAR.SEA_LIFT;
+    const max = !bySea ? w.troops[src] - WAR.KEEP : Math.min(lift, w.troops[src] - WAR.KEEP);
     const n = want ? Math.max(1, Math.min(max, want)) : max;
     S.points[f] -= cost; if (bySea) w.buff[f].transport = false;
     w.troops[src] -= n; w.troops[dst] += n;
@@ -873,6 +876,8 @@ const Engine = (() => {
     if (c.cost > S.points[f]) return { error: `${c.name} costs ${c.cost}. You have ${S.points[f]} left.` };
     const valid = warTargets(S, card);
     if (valid && !valid.includes(target)) return { error: `${c.name} can't target that province.` };
+    if (card === 'w_transport' && !held(S, f).some(id => portWorks(S, id))) return { error: 'Naval transport needs a working port you hold.' };
+    if (card === 'w_transport' && f === 'imp' && !w.dutchIn) return { error: 'The Dutch navy can only carry troops once the Dutch are at war.' };
     if (card === 'w_reinforce' || card === 'w_recruit' || card === 'w_legion') {
       const who = card === 'w_legion' ? (w.dutchIn ? 'imp' : 'sep') : f;
       if (card !== 'w_legion' || w.dutchIn || rebelOutposts(S).length) if (army(S, who) >= supply(S, who)) return { error: `${who === f ? 'You are' : `The ${FNAME[who].toLowerCase()} are`} at the supply limit (${army(S, who)} of ${supply(S, who)} troops). Take more provinces to raise it.` };
@@ -928,11 +933,8 @@ const Engine = (() => {
       // end of the round: unattacked provinces recover, the war drags on diplomacy
       Object.keys(w.control).forEach(id => { if (!w.attacked[id] && w.control[id] < WAR.CONTROL) { w.control[id]++; if (w.control[id] === WAR.CONTROL) delete w.press[id]; } });
       w.attacked = {};
-      if (w.round >= WAR.ROUNDS) {
-        if (rebelOutposts(S).length) endWar(S, 'sep', `The rebels held out for ${WAR.ROUNDS} rounds. The Republic must negotiate.`);
-        else endWar(S, 'gov', 'The rebellion has been crushed.');
-        return {};
-      }
+      scoreRound(S);
+      if (w.round >= WAR.ROUNDS) { finishOnPoints(S); return {}; }
       w.round++; S.turn++;
       if (WAR.DRAIN && w.round % WAR.DRAIN === 0) { S.diplomacy = Math.max(0, S.diplomacy - 1); log(S, 'gov', `Round ${w.round}. The war drags on abroad (diplomacy −1).`); }
       else log(S, 'gov', `Round ${w.round} begins.`);
@@ -940,15 +942,38 @@ const Engine = (() => {
     }
     S.active = next;
     beginTurn(S, next);
+    if (w.out && w.out[next]) return warEndTurn(S, rng);   // knocked out: skip their turn
     return {};
+  }
+  /* points: every faction scores at the end of each round; the war ends on points after the last round */
+  function roundPoints(S, f) {
+    // you score for ground GAINED since the war began (not for size), plus Jakarta, plus rebel outposts
+    const w = S.war, gain = Math.max(0, held(S, f).length - ((w.start || {})[f] || 0));
+    return gain * (f === 'imp' ? WAR.PTS_GAIN_DUTCH : WAR.PTS_GAIN) + (w.owner.jakarta === f ? WAR.PTS_JAKARTA : 0)
+      + (f === 'sep' ? rebelOutposts(S).length * WAR.PTS_OUTPOST : 0);
+  }
+  function scoreRound(S) {
+    const w = S.war; w.score = w.score || { gov: 0, sep: 0, imp: 0 };
+    FACTIONS.forEach(f => { if (!(w.out && w.out[f])) w.score[f] += roundPoints(S, f); });
+    log(S, 'gov', `Round ${w.round} scores: Republic ${w.score.gov}, Rebels ${w.score.sep}, Dutch ${w.score.imp}.`);
+  }
+  function finishOnPoints(S) {
+    const w = S.war, alive = FACTIONS.filter(f => !(w.out && w.out[f]));
+    const best = alive.slice().sort((a, b) => (w.score[b] - w.score[a]) || (held(S, b).length - held(S, a).length))[0];
+    endWar(S, best, `The ${FNAME[best].toLowerCase()} win on points after ${w.round} rounds (${alive.map(f => `${FNAME[f]} ${w.score[f]}`).join(', ')}).`);
   }
   function endWar(S, f, reason) { S.phase = 'over'; S.winner = { f, reason }; log(S, f, reason); }
   function checkWarEnd(S) {
     if (S.phase !== 'war') return;
     const w = S.war;
-    if (w.owner.jakarta === 'sep') return endWar(S, 'sep', 'Jakarta has fallen to the rebels!');
-    if (w.owner.jakarta === 'imp') return endWar(S, 'imp', 'Dutch troops march into Jakarta.');
-    if (!rebelOutposts(S).length) return endWar(S, 'gov', 'The last rebel outpost has fallen.');
+    w.out = w.out || {}; w.score = w.score || { gov: 0, sep: 0, imp: 0 };
+    // a faction with no land and no troops ashore is knocked out (the Dutch only count once at war)
+    FACTIONS.forEach(f => {
+      if (w.out[f] || (f === 'imp' && !w.dutchIn)) return;
+      if (!held(S, f).length && !Object.values(w.beach).some(b => b && b.f === f)) { w.out[f] = true; log(S, f, `The ${FNAME[f].toLowerCase()} are knocked out of the war.`); }
+    });
+    const alive = FACTIONS.filter(f => !w.out[f] && (f !== 'imp' || w.dutchIn || held(S, f).length));
+    if (alive.length === 1) return endWar(S, alive[0], `The ${FNAME[alive[0]].toLowerCase()} are the last ones standing.`);
   }
 
   /* ---------- war bot: any faction, no hidden information needed ---------- */
@@ -1145,7 +1170,7 @@ const Engine = (() => {
   return { FACTIONS, botMove, phase1Bot, invade, FNAME, CARDS, LEVEL, HAND, DIP_MAX, DIP_PRESSURE, OUTPOSTS_FOR_WAR,
     init, newGame, hideoutChoices, chooseHideout, targets, play, answerFor, resolveSearch,
     discard, canDeclareWar, declareWar, endTurn, basePoints, outposts, nameOf, hasPort,
-    WAR, startWar, warSandbox, supply, army, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
+    WAR, startWar, warSandbox, supply, army, roundPoints, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
     odds, held, rebelOutposts, portWorks, seaReach, reinforcements, warPoints };
 })();
 /* ENGINE:END */
@@ -1274,7 +1299,7 @@ const LANDMARK = [
   ['Gedung Sate', 107.72, -7.18, `<path d="M-9 5V0h18v5z" fill="#f4ead0" ${LINE}/><path d="M-2 0v-4h4v4" fill="#f4ead0" ${LINE}/><path d="M0 -4v-3M-1.5 -6.5h3M-1.2 -5.5h2.4" ${LINE}/>`],
   ['Borobudur', 110.20, -7.60, `<path d="M-9 5h18l-2 -3h-14zM-6 2h12l-2 -3h-8zM-3 -1h6l-1 -3h-4z" fill="#b9a27a" ${LINE}/><path d="M0 -4v-3" ${LINE}/>`],
   ['Mount Bromo', 112.95, -7.94, `<path d="M-9 5l6 -9q3 2 6 0l6 9z" fill="#8a7a5c" ${LINE}/><path d="M-1 -6q-1 -3 2 -4" fill="none" ${LINE}/>`],
-  ['Candi Bentar temple gate', 115.30, -8.42, `<path d="M-7 6V-6l3 -2v14zM7 6V-6l-3 -2v14z" fill="#b9806a" ${LINE}/>`],
+  ['Candi Bentar temple gate', 114.55, -8.30, `<path d="M-7 6V-6l3 -2v14zM7 6V-6l-3 -2v14z" fill="#b9806a" ${LINE}/>`],
   ['Mount Rinjani', 116.46, -8.41, `<path d="M-8 5l8 -11l8 11z" fill="#8a7a5c" ${LINE}/><path d="M-2.5 -2.5l2.5 1 2.5 -1" fill="none" ${LINE}/>`],
   ['Komodo dragon', 119.49, -8.55, `<path d="M-9 1q4 -3 10 -1t6 -2l2 1q-2 3 -7 4q-6 1 -11 -2z" fill="#6f7a4a" ${LINE}/><path d="M-4 1.5l-1 3M2 2l1 3" ${LINE}/>`],
   ['Equator monument', 109.65, 0.0, `<path d="M0 6V-6M-5 -2a5 5 0 0 0 10 0" fill="none" ${LINE}/><path d="M-4 6h8" ${LINE}/><circle cx="0" cy="-2" r="1.3" fill="#3b2c1c"/>`],
@@ -1630,7 +1655,8 @@ function renderTop() {
     if (isBot(f)) label += ' · bot';
     else if (mode === 'online') { const seat = S.seats[f]; label += seat ? ` · ${seat.key === net.key ? 'you' : (net.names[seat.uid] || 'Friend')}` : ' · open'; if (seat && net.online.has(seat.key)) c.append(h('span', 'on-line')); }
     else if (viewF === f) label += ' (you)';
-    c.append(h('span', null, S.war ? `${label} · ${E.army(S, f)}${f !== 'imp' || S.war.dutchIn ? '/' + E.supply(S, f) : ''} troops` : `${label} · ${S.hands[f].length} cards`));
+    c.append(h('span', null, S.war ? `${label} · ${E.army(S, f)}${f !== 'imp' || S.war.dutchIn ? '/' + E.supply(S, f) : ''} troops · ${(S.war.score || {})[f] || 0} pts` : `${label} · ${S.hands[f].length} cards`));
+    if (S.war && S.war.out && S.war.out[f]) c.classList.add('out');
     if (S.war) c.title = `${FN[f]}: ${E.army(S, f)} troops${f !== 'imp' || S.war.dutchIn ? `, supply limit ${E.supply(S, f)}` : ''}`;
     R.append(c);
   });
@@ -1879,7 +1905,7 @@ function renderControls() {
 function renderWarControls(C) {
   const w = S.war;
   C.append(h('h4', null, myTurn() ? `${FN[viewF]} · round ${w.round} of ${E.WAR.ROUNDS}` : `Round ${w.round} of ${E.WAR.ROUNDS}`));
-  C.append(h('div', 'waiting', `Rebel outposts: ${E.rebelOutposts(S).length} · rebels hold ${E.held(S, 'sep').length} provinces`));
+  C.append(h('div', 'waiting', `Scores: ${F.map(f => `${SHORT[f]} ${(w.score || {})[f] || 0} (+${E.roundPoints(S, f)} this round)`).join(' · ')}`));
   if (viewF && mine(viewF) && (viewF !== 'imp' || S.war.dutchIn)) C.append(h('div', 'waiting', `Your army: ${E.army(S, viewF)} troops · supply limit ${E.supply(S, viewF)}`));
   if (!myTurn()) { C.append(h('div', 'waiting', `Waiting for the ${FN[S.active]}${isBot(S.active) ? ' (bot)' : ''}…`)); return; }
   const pts = h('div', 'points'); pts.append(h('span', null, 'Points'));
@@ -1975,6 +2001,7 @@ function lobbyPanel() {
   if (mode === 'local' && S && showMenu) r1.append(button('Back to the game', 'ghost', () => { showMenu = false; render(); }));
   P.append(r1);
 
+  P.append(h('p', 'soft', 'Version 4 Nov 2026, 20:21 (points war)'));
   const cr = Soundtrack.credits;
   if (cr.length) {
     const d = h('details'); const sm = h('summary', null, `Music credits (${cr.length})`); sm.style.cursor = 'pointer'; d.append(sm);
@@ -2021,6 +2048,7 @@ function lobbyPanel() {
 function overPanel() {
   const w = S.winner || { f: null, reason: '' };
   const P = panelBase(w.f ? `${FN[w.f]} win` : 'Game over', w.reason);
+  if (S.war && S.war.score) { const box = h('div', 'uprise'); F.slice().sort((a, b) => S.war.score[b] - S.war.score[a]).forEach(f => { const r = h('div', f === w.f ? 'won' : ''); r.append(h('span', null, FN[f] + (S.war.out && S.war.out[f] ? ' (knocked out)' : '')), h('b', null, `${S.war.score[f]} points`)); box.append(r); }); P.append(box); }
   P.append(h('p', 'soft', S.war ? `The war lasted ${S.war.round} rounds. Rebels held ${E.held(S, 'sep').length} provinces and ${E.rebelOutposts(S).length} outposts. Diplomacy ended at ${S.diplomacy}.` : `The game lasted ${S.turn} turns. Diplomacy ended at ${S.diplomacy}. Outposts: ${E.outposts(S).length}.`));
   const r = h('div', 'row');
   r.append(button('Back to the menu', '', () => { showMenu = true; renderOverlay(); }));
@@ -2044,7 +2072,7 @@ function uprisingPanel() {
     box.append(r);
   });
   P.append(box);
-  P.append(h('p', 'soft', `Rebels win by taking Jakarta or by keeping an outpost for ${E.WAR.ROUNDS} rounds. The government wins by destroying every outpost.`));
+  P.append(h('p', 'soft', `The war runs ${E.WAR.ROUNDS} rounds, scored at the end of each round: +${E.WAR.PTS_GAIN} per province gained since today (+${E.WAR.PTS_GAIN_DUTCH} for the Dutch), +${E.WAR.PTS_JAKARTA} for holding Jakarta, +${E.WAR.PTS_OUTPOST} per rebel outpost. Most points wins. A faction that loses all its land is knocked out; the last one standing wins at once.`));
   P.append(button('To war', '', () => { uprisingShow = null; render(); }));
   return P;
 }
