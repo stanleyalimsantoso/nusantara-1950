@@ -347,8 +347,8 @@ const Engine = (() => {
     destroy:    { name: 'Destroy outpost', f: 'gov', cost: 3, target: 'prov', text: 'Remove an outpost. The province drops to Restless.' },
     mission:    { name: 'Diplomatic mission', f: 'gov', cost: 2, target: null, text: 'Diplomacy +1.' },
     repair:     { name: 'Repair port', f: 'gov', cost: 1, target: 'prov', text: 'A wrecked port works again.' },
-    propaganda: { name: 'Propaganda', f: 'sep', cost: 1, target: 'prov', text: 'Unrest +1 within 2 provinces of your hideout or an outpost.' },
-    raid:       { name: 'Raid', f: 'sep', cost: 2, target: 'prov', text: 'Unrest +2 in a province that is already Restless.' },
+    propaganda: { name: 'Propaganda', f: 'sep', cost: 1, target: 'prov', text: 'Unrest +1 in any Republic province (not Jakarta, not behind a fort).' },
+    raid:       { name: 'Raid', f: 'sep', cost: 2, target: 'prov', text: 'Unrest +2 in any Republic province (not Jakarta, not behind a fort).' },
     ssab:       { name: 'Sabotage', f: 'sep', cost: 2, target: 'prov', text: 'In a Restless province: destroy its fort, or else wreck its port.' },
     outpost:    { name: 'Establish outpost', f: 'sep', cost: 3, target: 'prov', text: 'In a province that is Ready to rise.' },
     relocate:   { name: 'Relocate hideout', f: 'sep', cost: 3, target: 'prov', text: 'Secretly move your hideout.' },
@@ -430,6 +430,8 @@ const Engine = (() => {
     log(S, 'sep', 'The separatists have gone into hiding.');
   }
 
+  let PROP_SEA = 'anywhere', RAID_ANY = true;   // the rebels' network reaches the whole Republic (Jakarta excepted)
+  // (older options: PROP_SEA 'all' = 2 provinces over land or across a shared sea; RAID_ANY false = raids need unrest already)   // how far Propaganda reaches across the sea: 'all' (hideout and outposts), 'outposts', 'none'
   function within(sources, steps) {
     const seen = new Set(sources), q = sources.map(s => [s, 0]);
     while (q.length) {
@@ -455,12 +457,16 @@ const Engine = (() => {
       case 'repair': return R.filter(id => hasPort(id) && S.ports[id].broken);
       case 'propaganda': {
         const src = [...outposts(S)]; if (secret) src.push(secret);
-        if (!src.length) return [];
+        if (!src.length && PROP_SEA !== 'anywhere') return [];
         const near = within(src, 2);
-        return RS.filter(id => near.has(id) && canRise(id));
+        // networks also travel by boat: any coast that shares a sea with the hideout or an outpost
+        const seaSrc = PROP_SEA === 'outposts' ? outposts(S) : PROP_SEA === 'none' ? [] : src;
+        const seas = new Set(); seaSrc.forEach(id => (byId[id].seas || []).forEach(z => seas.add(z)));
+        if (PROP_SEA === 'anywhere') return RS.filter(canRise);
+        return RS.filter(id => (near.has(id) || (byId[id].seas || []).some(z => seas.has(z))) && canRise(id));
       }
       case 'iprop': return RS.filter(id => !P[id].fort);
-      case 'raid': return RS.filter(id => P[id].loy >= 1 && canRise(id));
+      case 'raid': return RS.filter(id => (RAID_ANY || P[id].loy >= 1) && canRise(id));
       case 'ssab': return RS.filter(id => P[id].loy >= 1 && (P[id].fort || portOk(id)));
       case 'outpost': return RS.filter(id => P[id].loy === 3 && !P[id].outpost);
       case 'relocate': return hideoutChoices(S).filter(id => id !== secret);
@@ -1313,7 +1319,7 @@ const Engine = (() => {
   }
 
   return { FACTIONS, botMove, phase1Bot, invade, FNAME, CARDS, LEVEL, HAND, DIP_MAX, DIP_PRESSURE, OUTPOSTS_FOR_WAR,
-    init, newGame, hideoutChoices, chooseHideout, targets, play, answerFor, resolveSearch,
+    setPropSea: v => { PROP_SEA = v; }, init, newGame, hideoutChoices, chooseHideout, targets, play, answerFor, resolveSearch,
     discard, canDeclareWar, declareWar, endTurn, basePoints, outposts, nameOf, hasPort,
     WAR, startWar, warSandbox, supply, army, roundPoints, fleetsOf, fleetCap, canLaunch, supplySeas, launchPorts, launch, embark, embarkMax, sail, sailZones, landTargets, landFleet, isPort, zonesWithin, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
     odds, held, rebelOutposts, portWorks, seaReach, reinforcements, warPoints };
@@ -2234,7 +2240,7 @@ function lobbyPanel() {
   if (mode === 'local' && S && showMenu) r1.append(button('Back to the game', 'ghost', () => { showMenu = false; render(); }));
   P.append(r1);
 
-  P.append(h('p', 'soft', 'Version 4 Nov 2026, 21:35 (supply lines)'));
+  P.append(h('p', 'soft', 'Version 4 Nov 2026, 22:03 (rebels act anywhere)'));
   const cr = Soundtrack.credits;
   if (cr.length) {
     const d = h('details'); const sm = h('summary', null, `Music credits (${cr.length})`); sm.style.cursor = 'pointer'; d.append(sm);
