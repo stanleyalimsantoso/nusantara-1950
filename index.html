@@ -70,7 +70,9 @@ a.viewbtn { text-decoration: none; }
 /* stage */
 .stage { position: relative; min-height: 0; overflow: hidden; touch-action: none; background-color: #563a22;
   background-image: repeating-linear-gradient(180deg, #5d4027 0 31px, #2c1d10 31px 32px, #553a22 32px 63px, #2c1d10 63px 64px); }
-#map { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; display: block; cursor: grab; user-select: none; transform-origin: 0 0; will-change: transform; }
+/* the map moves inside a plain container: moving the <svg> itself makes the browser redraw it on every frame */
+#mapwrap { position: absolute; left: -30%; top: -30%; width: 160%; height: 160%; transform-origin: 0 0; will-change: transform; }
+#map { position: absolute; inset: 0; width: 100%; height: 100%; display: block; cursor: grab; user-select: none; }
 #map.dragging { cursor: grabbing; }
 .prov { stroke: #6a5338; stroke-width: calc(var(--u) * .5px); cursor: pointer; }
 .prov.gov { fill: var(--gov); } .prov.imp { fill: var(--imp); }
@@ -86,9 +88,9 @@ a.viewbtn { text-decoration: none; }
 #map.targeting .prov:not(.valid) { opacity: .38; }
 #map.targeting .prov.valid { stroke: #f6e08a; stroke-width: calc(var(--u) * 1.6px); }
 #map.targeting .prov.valid:hover { stroke: #fff4c4; stroke-width: calc(var(--u) * 2.6px); }
+#map .seaz.supply { fill: rgba(111,148,71,.10); stroke: #6f9447; }
 #map .seaz.valid { pointer-events: auto; cursor: pointer; fill: rgba(246,224,138,.22); stroke: #b8913f; }
 #map .seaz.valid:hover { fill: rgba(246,224,138,.4); }
-#map.zooming #g-lbl, #map.zooming #g-mk, #map.zooming #g-fleet, #map.zooming #g-flav, #map.zooming #g-leg { visibility: hidden; }
 .seaz { fill: transparent; stroke: var(--line); stroke-width: calc(var(--u) * 1px); stroke-dasharray: calc(var(--u) * 5px) calc(var(--u) * 4px); pointer-events: none; }
 .lbl { font-family: var(--f-display); fill: var(--ink); pointer-events: none; text-anchor: middle; dominant-baseline: middle;
   paint-order: stroke; stroke: rgba(244,234,208,.75); stroke-width: calc(var(--u) * 2.5px); stroke-linejoin: round; }
@@ -244,6 +246,7 @@ a.viewbtn { text-decoration: none; }
     <div class="rivals tools"><button class="viewbtn" id="musicbtn" type="button" aria-pressed="false">Music off</button><button class="viewbtn" id="sfxbtn" type="button" aria-pressed="true">Sounds on</button><div class="musicpop" id="musicpop" hidden></div><a class="viewbtn" id="soundtrack" href="https://www.youtube.com/watch?v=5jdMND0Kpto&amp;list=PLSwM0J_taarc" target="_blank" rel="noopener">Playlist ↗</a></div>
   </header>
   <main class="stage" id="stage">
+    <div id="mapwrap">
     <svg id="map" role="img" aria-label="Map of Indonesia in 1950 with game provinces">
       <defs>
         <pattern id="waves" width="46" height="22" patternUnits="userSpaceOnUse">
@@ -281,6 +284,7 @@ a.viewbtn { text-decoration: none; }
         <g id="g-props"></g>
       </g>
     </svg>
+    </div>
 
     <div class="pile left"><div class="cap">Deck</div><div class="stack back" id="deck"></div><div class="num" id="decknum"></div></div>
     <div class="pile right"><div class="cap">Discard</div><div class="stack empty" id="disc"></div><div class="num" id="discnum"></div></div>
@@ -584,7 +588,7 @@ const Engine = (() => {
   /* ================= PHASE 2: CIVIL WAR =================
      Every province has an owner, troops and 3 control points. Attacks are push-and-pull:
      an attacker win takes a control point (at 0 the province falls), a defender win kills an attacking troop. */
-  const WAR = { FLEET_CAP: 4, FLEET_PORT_CAP: 8, SAIL_ZONES: 2, SAIL_COST: 1, LAND_COST: 2, LAUNCH_COST: 1, KEEP: 0, ROUNDS: 15, PORT_LIFT: 6, PTS_GAIN: 1, PTS_GAIN_DUTCH: 1, PTS_JAKARTA: 5, PTS_OUTPOST: 1, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
+  const WAR = { FLEET_CAP: 4, FLEET_PORT_CAP: 8, SAIL_ZONES: 1, SAIL_COST: 1, LAND_COST: 2, LAUNCH_COST: 1, KEEP: 0, ROUNDS: 15, PORT_LIFT: 6, PTS_GAIN: 1, PTS_GAIN_DUTCH: 1, PTS_JAKARTA: 5, PTS_OUTPOST: 1, CAPITAL: 6, GOV_SUPPLY: 10, SEP_SUPPLY: 4, DUTCH_SUPPLY: 16, MASSED: 5, PORT_HOP: 1, CONTROL: 3, MAX_DICE: 3, MAX_DEF: 3, GOV_PTS: 8, SEP_PTS: 6, IMP_PTS: 4, GOV_DIV: 4, SEP_DIV: 4, DRAIN: 2, DUTCH_FORCE: 5, DUTCH_REINF: 3, INVASION_EXTRA: 4, HIDEOUT_TROOPS: 5, SIEGE_TROOPS: 2, FORT: 2, ENTRENCH: 2, DEF_CAP: 2, AIR: 2, BEACH: -2, SEA_LIFT: 4, BIG_LIFT: 8, WAR_DIP_HIT: 2, HAND: 5 };
   Object.assign(CARDS, {
     w_reinforce: { name: 'Reinforcements', f: 'gov', cost: 2, target: 'own', war: true, text: '+3 troops in a province you hold, up to your supply limit.' },
     w_air:       { name: 'Air strike', f: 'gov', cost: 1, target: null, war: true, text: 'Your next attack this turn gets +2.' },
@@ -833,16 +837,23 @@ const Engine = (() => {
     return {};
   }
   /* coasts a fleet can land on this turn: any coast touching a sea zone within sailing range */
+  /* the seas your working ports touch: invasions must land on these */
+  function supplySeas(S, f) { const z = new Set(); held(S, f).filter(id => portWorks(S, id)).forEach(id => (byId[id].seas || []).forEach(q => z.add(q))); return z; }
   function landTargets(S, x) {
     if (!x || x.moved || !x.n) return [];
     const zs = zonesWithin(x.zone, WAR.SAIL_ZONES), w = S.war, f = x.f;
     const canHit = id => w.owner[id] !== f && (w.owner[id] !== 'imp' || w.dutchIn || f === 'imp');
-    return MAP.provinces.map(p => p.id).filter(id => (byId[id].seas || []).some(z => zs.has(z)) && (w.owner[id] === f || (canHit(id) && !(w.beach[id] && w.beach[id].f !== f))));
+    const sup = supplySeas(S, f);
+    // your own coasts: anywhere in reach. Enemy coasts: only on a sea one of your working ports touches (the supply line)
+    return MAP.provinces.map(p => p.id).filter(id => (byId[id].seas || []).some(z => zs.has(z)) && (w.owner[id] === f || (canHit(id) && !(w.beach[id] && w.beach[id].f !== f) && byId[id].seas.some(z => sup.has(z)))));
   }
   function landFleet(S, fleetId, dst, rng = Math.random) {
     const f = S.active, w = S.war, x = (w.fleets || []).find(y => y.id === fleetId);
     if (!x || x.f !== f) return { error: 'Choose one of your fleets.' };
-    if (!landTargets(S, x).includes(dst)) return { error: x.moved ? 'That fleet has already sailed this turn.' : !x.n ? 'That fleet carries no troops.' : 'That coast is out of reach.' };
+    if (!landTargets(S, x).includes(dst)) {
+      const inReach = (byId[dst].seas || []).some(z => zonesWithin(x.zone, WAR.SAIL_ZONES).has(z));
+      return { error: x.moved ? 'That fleet has already sailed this turn.' : !x.n ? 'That fleet carries no troops.' : !inReach ? 'That coast is out of reach (1 sea zone per turn).' : w.owner[dst] !== f ? 'Invasions need a supply line: the coast must touch a sea next to one of your working ports.' : 'You can’t land there.' };
+    }
     const free = !!w.buff[f].transport, cost = free ? 0 : WAR.LAND_COST;
     if (S.points[f] < cost) return { error: `Sailing and landing costs ${WAR.LAND_COST} points.` };
     S.points[f] -= cost; w.buff[f].transport = false;
@@ -1304,7 +1315,7 @@ const Engine = (() => {
   return { FACTIONS, botMove, phase1Bot, invade, FNAME, CARDS, LEVEL, HAND, DIP_MAX, DIP_PRESSURE, OUTPOSTS_FOR_WAR,
     init, newGame, hideoutChoices, chooseHideout, targets, play, answerFor, resolveSearch,
     discard, canDeclareWar, declareWar, endTurn, basePoints, outposts, nameOf, hasPort,
-    WAR, startWar, warSandbox, supply, army, roundPoints, fleetsOf, fleetCap, canLaunch, launchPorts, launch, embark, embarkMax, sail, sailZones, landTargets, landFleet, isPort, zonesWithin, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
+    WAR, startWar, warSandbox, supply, army, roundPoints, fleetsOf, fleetCap, canLaunch, supplySeas, launchPorts, launch, embark, embarkMax, sail, sailZones, landTargets, landFleet, isPort, zonesWithin, warActions, place, move, land, attack, warPlay, warTargets, warEndTurn, warBot, applyWarBot,
     odds, held, rebelOutposts, portWorks, seaReach, reinforcements, warPoints };
 })();
 /* ENGINE:END */
@@ -1317,7 +1328,7 @@ Engine.init({ provinces: D.provinces, ports: D.ports, seas: D.seas });
 const E = Engine, F = E.FACTIONS, FN = E.FNAME;
 const NS = 'http://www.w3.org/2000/svg';
 const $ = id => document.getElementById(id);
-const svg = $('map'), stage = $('stage');
+const svg = $('map'), stage = $('stage'), mapwrap = $('mapwrap');
 const el = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); if (parent) parent.appendChild(e); return e; };
 const h = (tag, cls, text) => { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; };
 const PROV = {}; D.provinces.forEach(p => PROV[p.id] = p);
@@ -1555,7 +1566,7 @@ function renderLegend() {
       [`<path d="M-5 5V-2.5h2v-2.5h2v2.5h2v-2.5h2v2.5H5v7.5z" fill="#9a8a70" stroke="#3b2c1c" stroke-width=".9"/>`, 'Fort (+2 defence)'],
       [`<path d="M-3 6V-6" stroke="#2b2117" stroke-width="1.4"/><path d="M-3 -6h8l-2.5 3 2.5 3h-8z" fill="#6f9447" stroke="#2b2117" stroke-width=".8"/>`, 'Rebel outpost']);
   }
-  if (war) rows.push([`<path d="M-7 0h14l-3 4h-9z" fill="#8c3b2c"/><path d="M-1 0V-7M-1 -6.5l5 6h-5z" fill="#f4ead0" stroke="#8c3b2c" stroke-width=".8"/>`, 'Fleet (troops aboard)']);
+  if (war) rows.push([`<path d="M-7 0h14l-3 4h-9z" fill="#8c3b2c"/><path d="M-1 0V-7M-1 -6.5l5 6h-5z" fill="#f4ead0" stroke="#8c3b2c" stroke-width=".8"/>`, 'Fleet (troops aboard)'], [`<rect x="-7" y="-5" width="14" height="10" fill="rgba(111,148,71,.25)" stroke="#6f9447" stroke-dasharray="2 1.5"/>`, 'Supply line: seas you can invade']);
   rows.push([`<circle r="3.6" fill="#f4ead0" stroke="#3b2c1c"/><circle r="1.2" fill="#3b2c1c"/>`, 'Port (one fleet each)'], [`<rect x="-2" y="-2" width="4" height="4" fill="#f4ead0" stroke="#2b2117" stroke-width=".9"/>`, 'City']);
   const H = 20 + rows.length * 15;
   el('rect', { x: 0, y: 172 - H - 4, width: 148, height: H, fill: '#efe3c4', stroke: '#3b2c1c', 'stroke-width': .8, opacity: .96 }, gLeg);
@@ -1600,8 +1611,7 @@ function clampVb() {
   vb.y = Math.min(Math.max(cy - vb.h / 2, TABLE.y), TABLE.y + TABLE.h - vb.h);
 }
 function commit() {
-  clearTimeout(commitTimer); cv = { ...vb }; svg.style.transform = '';
-  if (!zoomRaf && !zoomDebt) svg.classList.remove('zooming');
+  clearTimeout(commitTimer); cv = { ...vb }; mapwrap.style.transform = '';
   svg.setAttribute('viewBox', `${vb.x - PAD * vb.w} ${vb.y - PAD * vb.h} ${vb.w * (1 + 2 * PAD)} ${vb.h * (1 + 2 * PAD)}`);
   kk = rect().width / vb.w;
   svg.style.setProperty('--u', (1 / kk).toFixed(4));
@@ -1624,7 +1634,7 @@ const PAD = .3;   // the map is drawn 30% wider on each side than what you see
 function preview() {
   const r = rect(), k0 = r.width / cv.w, s = cv.w / vb.w;
   const tx = (cv.x - vb.x) * k0 * s + PAD * r.width * (1 - s), ty = (cv.y - vb.y) * k0 * s + PAD * r.height * (1 - s);
-  svg.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+  mapwrap.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
 }
 function zoomAt(f, cx, cy) {
   const r = rect();
@@ -1658,7 +1668,6 @@ svg.addEventListener('wheel', e => {
   e.preventDefault();
   const dy = e.deltaMode === 1 ? e.deltaY * 33 : e.deltaMode === 2 ? e.deltaY * 400 : e.deltaY;
   zoomDebt = Math.max(-2.5, Math.min(2.5, zoomDebt - dy * .0018)); zoomAt0 = [e.clientX, e.clientY];
-  svg.classList.add('zooming');   // labels and markers are the slow part to redraw: hide them for the glide
   if (!zoomRaf) zoomRaf = requestAnimationFrame(zoomStep);
 }, { passive: false });
 let drag = null, moved = false; const pts = new Map();
@@ -1766,7 +1775,7 @@ function renderHint() {
     } else if (launchMode) { msg = 'Choose a port to launch the fleet from.'; cancel = true; }
     else if (srcFleet) {
       const x = (w.fleets || []).find(y => y.id === srcFleet);
-      msg = !x ? '' : x.moved ? 'This fleet has sailed this turn. Select an army next to it to board (free).' : x.n ? `Fleet with ${x.n} troops: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or a highlighted coast to sail and land (${E.WAR.LAND_COST} pts).` : `Empty fleet: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or one of your coastal provinces next to it to load troops (free).`;
+      msg = !x ? '' : x.moved ? 'This fleet has sailed this turn. Select an army next to it to board (free).' : x.n ? `Fleet with ${x.n} troops: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or a highlighted coast to sail and land (${E.WAR.LAND_COST} pts). Invasions only on seas next to your ports.` : `Empty fleet: click a glowing sea zone to sail (${E.WAR.SAIL_COST} pt), or one of your coastal provinces next to it to load troops (free).`;
       cancel = true;
     } else msg = 'Click one of your provinces with troops to command its army, or a ship to command a fleet.';
   }
@@ -1924,7 +1933,8 @@ function renderWarMap() {
   Object.keys(S.ports).filter(id => !PORT[id]).forEach(id => { if (!mkPort[id]) { const [x, y] = cityXY(id); mkPort[id] = markerGroup(x, y + 5); commit(); } drawPort(id, S.ports[id].broken, !!w.blockade[id]); });
   // sailing: highlight the sea zones the selected fleet can reach
   const fl = srcFleet && (w.fleets || []).find(x => x.id === srcFleet), sz = new Set(fl && myTurn() ? E.sailZones(S, fl) : []);
-  D.seas.forEach(z => seaEl[z.id].classList.toggle('valid', sz.has(z.id)));
+  const sup = fl && myTurn() ? E.supplySeas(S, viewF) : new Set();
+  D.seas.forEach(z => { seaEl[z.id].classList.toggle('valid', sz.has(z.id)); seaEl[z.id].classList.toggle('supply', sup.has(z.id)); });
   drawFleets();
 }
 const markKey = {};   // what each province's markers last showed: redraw only when it changes
@@ -2224,7 +2234,7 @@ function lobbyPanel() {
   if (mode === 'local' && S && showMenu) r1.append(button('Back to the game', 'ghost', () => { showMenu = false; render(); }));
   P.append(r1);
 
-  P.append(h('p', 'soft', 'Version 4 Nov 2026, 21:12 (checked and smoother)'));
+  P.append(h('p', 'soft', 'Version 4 Nov 2026, 21:35 (supply lines)'));
   const cr = Soundtrack.credits;
   if (cr.length) {
     const d = h('details'); const sm = h('summary', null, `Music credits (${cr.length})`); sm.style.cursor = 'pointer'; d.append(sm);
@@ -2824,7 +2834,7 @@ function highlightProv(id, color, ms) {
   const o = document.createElementNS(NS, 'svg');
   o.setAttribute('viewBox', svg.getAttribute('viewBox'));
   o.setAttribute('class', 'hl-layer');
-  o.style.transform = svg.style.transform || '';
+  o.style.transform = mapwrap.style.transform || '';
   el('path', { d: PROV[id].d, fill: color, 'fill-opacity': .18, stroke: color, 'stroke-linejoin': 'round', 'stroke-width': (3.5 / kk).toFixed(2) }, o);
   $('fx').append(o);
   if (reduceMotion()) { setTimeout(() => o.remove(), ms); return; }
