@@ -1,0 +1,2 @@
+Put your MP3 files in this folder, then list them in playlist.json.
+See part 2 of README.md for the exact steps and an example.
